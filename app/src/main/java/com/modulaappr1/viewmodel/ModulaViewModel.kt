@@ -2,6 +2,7 @@ package com.modulaappr1.viewmodel
 
 import android.app.ActivityManager
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -15,6 +16,7 @@ import com.modulaappr1.data.ChatSession
 import com.modulaappr1.domain.DocumentProcessor
 import com.modulaappr1.domain.RAGEngine
 import com.modulaappr1.domain.WikipediaAgent
+import com.modulaappr1.service.ModulaEngineService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -36,7 +38,8 @@ data class ChatMessage(
     val isUser: Boolean,
     val content: String = "",
     val thoughtProcess: String = "",
-    val isThinking: Boolean = false
+    val isThinking: Boolean = false,
+    val isStreaming: Boolean = false   // true mientras llegan tokens → texto plano
 )
 
 data class GenerationStats(
@@ -66,9 +69,7 @@ class ModulaViewModel(
 
     private var activeModelFile: File? = null
 
-    // =====================================================================
-    // ESTADOS REACTIVOS
-    // =====================================================================
+    // ── ESTADOS ───────────────────────────────────────────────────────
 
     private val _generationStats  = MutableStateFlow(GenerationStats())
     val generationStats: StateFlow<GenerationStats> = _generationStats.asStateFlow()
@@ -109,15 +110,11 @@ class ModulaViewModel(
     private val _documentProgress = MutableStateFlow("")
     val documentProgress: StateFlow<String> = _documentProgress.asStateFlow()
 
-    // Expuestos directamente (toggle desde la UI)
     val useWikipedia = MutableStateFlow(false)
     val useReasoning = MutableStateFlow(true)
 
-    // Biblioteca de documentos como Flow para la UI
     val documentLibrary = documentDao.getAllDocuments()
-
-    // Historial de sesiones para el drawer
-    val sessionHistory = chatDao.getAllSessions()
+    val sessionHistory  = chatDao.getAllSessions()
 
     var currentSessionId: Long = 0L
         private set
@@ -125,9 +122,7 @@ class ModulaViewModel(
     private val _chatMessages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val chatMessages: StateFlow<List<ChatMessage>> = _chatMessages.asStateFlow()
 
-    // =====================================================================
-    // SETTERS SIMPLES
-    // =====================================================================
+    // ── SETTERS ───────────────────────────────────────────────────────
 
     fun updateContextSize(v: Float)   { _contextSize.value = v }
     fun updateTemperature(v: Float)   { _temperature.value = v }
@@ -142,9 +137,20 @@ class ModulaViewModel(
         }
     }
 
-    // =====================================================================
-    // ESCÁNER GGUF
-    // =====================================================================
+    fun deleteSession(sessionId: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            chatDao.deleteSession(sessionId)
+            if (currentSessionId == sessionId) startNewSession()
+        }
+    }
+
+    fun renameSession(sessionId: Long, newTitle: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            chatDao.updateSessionTitle(sessionId, newTitle)
+        }
+    }
+
+    // ── ESCÁNER GGUF ──────────────────────────────────────────────────
 
     private fun scanGGUF(file: File): Pair<Int, Long> {
         var layers      = 35
@@ -152,15 +158,9 @@ class ModulaViewModel(
         try {
             val raf    = RandomAccessFile(file, "r")
             val buffer = ByteArray(1024 * 1024)
-            raf.read(buffer)
-            raf.close()
-
+            raf.read(buffer); raf.close()
             val bb = ByteBuffer.wrap(buffer).order(ByteOrder.LITTLE_ENDIAN)
-            if (bb.int == 0x46554747) {
-                bb.int
-                tensorCount = bb.long
-            }
-
+            if (bb.int == 0x46554747) { bb.int; tensorCount = bb.long }
             val target = "block_count".toByteArray(Charsets.UTF_8)
             for (i in 0 until buffer.size - target.size - 8) {
                 var found = true
@@ -178,15 +178,11 @@ class ModulaViewModel(
                     }
                 }
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } catch (e: Exception) { e.printStackTrace() }
         return Pair(layers, tensorCount)
     }
 
-    // =====================================================================
-    // SELECCIÓN DE MODELO
-    // =====================================================================
+    // ── SELECCIÓN DE MODELO ───────────────────────────────────────────
 
     fun selectModelFromFile(context: Context, file: File) {
         activeModelFile = file
@@ -194,18 +190,16 @@ class ModulaViewModel(
             val (layers, tensors) = scanGGUF(file)
             _scannedLayers.value  = layers
             _scannedTensors.value = tensors
-
             val actManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
             val memInfo    = ActivityManager.MemoryInfo()
             actManager.getMemoryInfo(memInfo)
             val ramGB = memInfo.totalMem / (1024f * 1024f * 1024f)
             _deviceRamGB.value = ramGB
-
             if (ramGB >= 11.5f) {
-                _gpuLayers.value      = layers.toFloat()
+                _gpuLayers.value       = layers.toFloat()
                 _hardwareMessage.value = "Hardware High-End — Aceleración GPU habilitada."
             } else {
-                _gpuLayers.value      = 0f
+                _gpuLayers.value       = 0f
                 _hardwareMessage.value = "Hardware Gama Media — Optimizado para CPU."
             }
             _statusMessage.value = _hardwareMessage.value
@@ -213,7 +207,6 @@ class ModulaViewModel(
         }
     }
 
-    // Intenta obtener el File real sin copiar — crítico para archivos grandes
     private fun resolveUriToFile(context: Context, uri: Uri): File? {
         if (uri.scheme == "file") {
             return uri.path?.let { File(it) }?.takeIf { it.exists() && it.canRead() }
@@ -221,32 +214,25 @@ class ModulaViewModel(
         val path          = uri.path ?: return null
         val primaryPrefix = "/document/primary:"
         val rawPrefix     = "/document/raw:"
-
         return when {
             path.startsWith(primaryPrefix) -> {
                 val rel = path.removePrefix(primaryPrefix)
-                listOf(
-                    File("/storage/emulated/0/$rel"),
-                    File("/sdcard/$rel")
-                ).firstOrNull { it.exists() && it.canRead() }
+                listOf(File("/storage/emulated/0/$rel"), File("/sdcard/$rel"))
+                    .firstOrNull { it.exists() && it.canRead() }
             }
-            path.startsWith(rawPrefix) -> {
+            path.startsWith(rawPrefix) ->
                 File(path.removePrefix(rawPrefix)).takeIf { it.exists() && it.canRead() }
-            }
             else -> null
         }
     }
 
     fun selectModelFromUri(context: Context, uri: Uri) {
-        // Intento 1: carga directa sin copiar
         val directFile = resolveUriToFile(context, uri)
         if (directFile != null) {
             _statusMessage.value = "Archivo detectado en almacenamiento local."
             selectModelFromFile(context, directFile)
             return
         }
-
-        // Intento 2: fallback — solo si es proveedor externo (Drive, etc.)
         _engineState.value   = EngineState.LOADING
         _statusMessage.value = "Copiando desde proveedor externo (solo una vez)..."
         viewModelScope.launch(Dispatchers.IO) {
@@ -263,19 +249,17 @@ class ModulaViewModel(
         }
     }
 
-    // =====================================================================
-    // INICIALIZACIÓN DEL MOTOR
-    // =====================================================================
+    // ── FORJA DEL MOTOR ───────────────────────────────────────────────
 
-    fun forgeEngine() {
+    fun forgeEngine(context: Context) {
         val file = activeModelFile ?: return
         _engineState.value   = EngineState.LOADING
         _statusMessage.value = "Inicializando motor..."
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val t0       = System.currentTimeMillis()
-                val cores    = Runtime.getRuntime().availableProcessors()
+                val t0        = System.currentTimeMillis()
+                val cores     = Runtime.getRuntime().availableProcessors()
                 val goldCores = if (cores >= 8) 3 else maxOf(1, cores / 2)
 
                 currentHandle = engine.initEngine(
@@ -289,10 +273,19 @@ class ModulaViewModel(
                 val docCount = documentDao.getDocumentCount()
 
                 if (currentHandle != 0L) {
-                    val ragStatus    = if (docCount > 0) "+ RAG ($docCount docs)" else "(sin docs)"
+                    val ragStatus = if (docCount > 0) "+ RAG ($docCount docs)" else "(sin docs)"
                     _engineState.value   = EngineState.READY
                     _statusMessage.value =
                         "Online $ragStatus — ${String.format(Locale.US, "%.1f", elapsed)}s"
+
+                    // FIX 1: Iniciar ForegroundService para mantener el modelo
+                    // vivo cuando el usuario abre el explorador de archivos
+                    val serviceIntent = Intent(
+                        context,
+                        ModulaEngineService::class.java
+                    )
+                    context.startForegroundService(serviceIntent)
+
                 } else {
                     _engineState.value   = EngineState.ERROR
                     _statusMessage.value = "Error al inicializar el motor."
@@ -304,23 +297,17 @@ class ModulaViewModel(
         }
     }
 
-    // =====================================================================
-    // INGESTA DE DOCUMENTOS
-    // =====================================================================
+    // ── INGESTA DE DOCUMENTOS ─────────────────────────────────────────
 
     fun processDocument(context: Context, uri: Uri, displayName: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            // Crear sesión si no hay ninguna activa
             if (currentSessionId == 0L) {
                 currentSessionId = chatDao.insertSession(
                     ChatSession(title = "Análisis: $displayName")
                 )
             }
-
             addSystemMessage("📎 Procesando: $displayName...")
-
             val isPdf = displayName.endsWith(".pdf", ignoreCase = true)
-
             val result = if (isPdf) {
                 documentProcessor.processPdf(
                     context     = context,
@@ -343,7 +330,6 @@ class ModulaViewModel(
                     }
                 )
             }
-
             result.fold(
                 onSuccess = { doc ->
                     updateLastSystemMessage(
@@ -351,9 +337,7 @@ class ModulaViewModel(
                         "Puedes hacerme preguntas sobre su contenido."
                     )
                 },
-                onFailure = { e ->
-                    updateLastSystemMessage("❌ Error: ${e.message}")
-                }
+                onFailure = { e -> updateLastSystemMessage("❌ Error: ${e.message}") }
             )
             _documentProgress.value = ""
         }
@@ -372,46 +356,36 @@ class ModulaViewModel(
         }
     }
 
-    // =====================================================================
-    // CHAT AGÉNTICO
-    // =====================================================================
+    // ── CHAT AGÉNTICO ─────────────────────────────────────────────────
 
     fun sendMessage(context: Context, userInput: String) {
         if (userInput.isBlank() || currentHandle == 0L || _isGenerating.value) return
 
-        // FIX 2: reset de stats antes de cada mensaje nuevo
+        // Reset de stats antes de cada mensaje
         _generationStats.value = GenerationStats()
         _isGenerating.value    = true
 
         viewModelScope.launch(Dispatchers.IO) {
-            // Crear sesión si no existe
             if (currentSessionId == 0L) {
                 val title = if (userInput.length > 25) userInput.take(25) + "…" else userInput
                 currentSessionId = chatDao.insertSession(ChatSession(title = title))
             }
 
-            // Guardar mensaje del usuario en Room
-            chatDao.insertMessage(
-                ChatMessageEntity(
-                    sessionId = currentSessionId,
-                    isUser    = true,
-                    content   = userInput
-                )
-            )
+            chatDao.insertMessage(ChatMessageEntity(
+                sessionId = currentSessionId, isUser = true, content = userInput
+            ))
 
-            // Añadir mensaje del usuario + placeholder de respuesta al estado
+            // isStreaming = true → MessageBubble mostrará texto plano (sin parpadeo)
             _chatMessages.update { it + listOf(
                 ChatMessage(isUser = true, content = userInput),
-                ChatMessage(isUser = false, isThinking = true)
+                ChatMessage(isUser = false, isThinking = true, isStreaming = true)
             )}
 
-            // Recuperar contexto RAG global
-            val allChunks  = documentDao.getAllChunks()
-            val networkOk  = try {
+            val allChunks = documentDao.getAllChunks()
+            val networkOk = try {
                 wikipediaAgent.isNetworkAvailable(context)
             } catch (e: Exception) { false }
 
-            // Construir prompt agéntico
             val promptDelta = ragEngine.buildAgenticPrompt(
                 userInput        = userInput,
                 allChunks        = allChunks,
@@ -421,18 +395,15 @@ class ModulaViewModel(
                 networkAvailable = networkOk
             )
 
-            // Prefijo de historial solo si el contexto KV está vacío
             val ctxCount   = engine.getContextCount(currentHandle)
             val fullPrompt = if (ctxCount == 0) buildHistoryPrefix() + promptDelta
                              else promptDelta
 
-            // Variables de tracking
             var tokenCount        = 0
             val promptStartMs     = System.currentTimeMillis()
             var generationStartMs = 0L
             var isThoughtChannel  = useReasoning.value
 
-            // Generación en streaming
             engine.generateStreaming(
                 handle    = currentHandle,
                 prompt    = fullPrompt,
@@ -440,11 +411,9 @@ class ModulaViewModel(
                 maxTokens = -1,
                 callback  = object : TokenCallback {
                     override fun onToken(token: String) {
-                        // Marca el inicio real de la generación en el primer token
                         if (tokenCount == 0) generationStartMs = System.currentTimeMillis()
                         tokenCount++
 
-                        // Actualizar stats en tiempo real
                         val elapsedSec = (System.currentTimeMillis() - generationStartMs) / 1000f
                         if (elapsedSec > 0f) {
                             _generationStats.value = GenerationStats(
@@ -455,7 +424,6 @@ class ModulaViewModel(
                             )
                         }
 
-                        // Enrutar token al canal correcto
                         _chatMessages.update { list ->
                             val m   = list.toMutableList()
                             var msg = m[m.lastIndex]
@@ -474,62 +442,52 @@ class ModulaViewModel(
                                         msg.copy(content = msg.content + token)
                                 }
                             }
-                            m[m.lastIndex] = msg
-                            m
+                            m[m.lastIndex] = msg; m
                         }
                     }
                 }
             )
 
-            // FIX 1: garantizar que isThinking = false al terminar la generación
+            // FIX 2: isStreaming = false → WebView renderiza Markdown+LaTeX
+            // isThinking = false → thought block se colapsa
             _chatMessages.update { list ->
                 val m = list.toMutableList()
-                m[m.lastIndex] = m[m.lastIndex].copy(isThinking = false)
+                m[m.lastIndex] = m[m.lastIndex].copy(
+                    isThinking  = false,
+                    isStreaming = false
+                )
                 m
             }
 
-            // Persistir respuesta final en Room
             val finalState = _chatMessages.value.last()
-            chatDao.insertMessage(
-                ChatMessageEntity(
-                    sessionId      = currentSessionId,
-                    isUser         = false,
-                    content        = finalState.content,
-                    thoughtProcess = finalState.thoughtProcess
-                )
-            )
+            chatDao.insertMessage(ChatMessageEntity(
+                sessionId      = currentSessionId,
+                isUser         = false,
+                content        = finalState.content,
+                thoughtProcess = finalState.thoughtProcess
+            ))
 
             _isGenerating.value = false
         }
     }
 
-    // =====================================================================
-    // HISTORIAL DE CONTEXTO
-    // =====================================================================
-
     private fun buildHistoryPrefix(): String {
         return buildString {
             _chatMessages.value.dropLast(1).forEach { msg ->
                 when {
-                    msg.isUser -> {
-                        append("<start_of_turn>user\n${msg.content}<end_of_turn>\n")
-                    }
-                    // FIX 4: excluir todos los mensajes de sistema del contexto
+                    msg.isUser -> append("<start_of_turn>user\n${msg.content}<end_of_turn>\n")
                     msg.content.isNotBlank()
                         && !msg.content.startsWith("✅")
                         && !msg.content.startsWith("📎")
                         && !msg.content.startsWith("❌")
-                        && !msg.content.startsWith("🌐") -> {
+                        && !msg.content.startsWith("🌐") ->
                         append("<start_of_turn>model\n${msg.content}<end_of_turn>\n")
-                    }
                 }
             }
         }
     }
 
-    // =====================================================================
-    // GESTIÓN DE SESIONES
-    // =====================================================================
+    // ── GESTIÓN DE SESIONES ───────────────────────────────────────────
 
     fun startNewSession() {
         _chatMessages.value    = emptyList()
@@ -548,12 +506,15 @@ class ModulaViewModel(
                     isUser         = it.isUser,
                     content        = it.content,
                     thoughtProcess = it.thoughtProcess,
-                    isThinking     = false
+                    isThinking     = false,
+                    isStreaming     = false
                 )
             }
             if (currentHandle != 0L) engine.trimMemory(currentHandle)
         }
     }
+
+    fun clearSession() = startNewSession()
 
     override fun onCleared() {
         super.onCleared()

@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import com.modulaappr1.ui.components.MarkdownLienzo
 import com.modulaappr1.ui.theme.*
 import com.modulaappr1.viewmodel.ChatMessage
+import com.modulaappr1.viewmodel.GenerationStats
 import com.modulaappr1.viewmodel.ModulaViewModel
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -51,11 +52,8 @@ fun NeuralQuartzApp(
     val pastSessions by viewModel.sessionHistory.collectAsState(initial = emptyList())
 
     BackHandler {
-        if (drawerState.isOpen) {
-            scope.launch { drawerState.close() }
-        } else {
-            onBackToForge()
-        }
+        if (drawerState.isOpen) scope.launch { drawerState.close() }
+        else onBackToForge()
     }
 
     ModalNavigationDrawer(
@@ -68,7 +66,7 @@ fun NeuralQuartzApp(
             ) {
                 Spacer(Modifier.height(24.dp))
                 Text(
-                    text       = "Historial",
+                    "Historial",
                     color      = TextPrimary,
                     fontSize   = 20.sp,
                     fontWeight = FontWeight.Bold,
@@ -79,7 +77,7 @@ fun NeuralQuartzApp(
                 NavigationDrawerItem(
                     label    = {
                         Text(
-                            text       = "✦ Nueva conversación",
+                            "✦ Nueva conversación",
                             color      = CyanNeon,
                             fontWeight = FontWeight.Bold
                         )
@@ -89,7 +87,7 @@ fun NeuralQuartzApp(
                         viewModel.startNewSession()
                         scope.launch { drawerState.close() }
                     },
-                    colors   = NavigationDrawerItemDefaults.colors(
+                    colors = NavigationDrawerItemDefaults.colors(
                         unselectedContainerColor = Color.Transparent
                     )
                 )
@@ -101,12 +99,17 @@ fun NeuralQuartzApp(
 
                 LazyColumn {
                     items(pastSessions) { session ->
+                        var showRenameDialog  by remember { mutableStateOf(false) }
+                        var showDeleteConfirm by remember { mutableStateOf(false) }
+                        var newName           by remember { mutableStateOf(session.title) }
+
                         NavigationDrawerItem(
                             label    = {
                                 Text(
-                                    text     = session.title,
+                                    session.title,
                                     color    = TextSecondary,
-                                    fontSize = 14.sp
+                                    fontSize = 14.sp,
+                                    maxLines = 1
                                 )
                             },
                             selected = viewModel.currentSessionId == session.sessionId,
@@ -114,11 +117,92 @@ fun NeuralQuartzApp(
                                 viewModel.loadSession(session.sessionId)
                                 scope.launch { drawerState.close() }
                             },
-                            colors   = NavigationDrawerItemDefaults.colors(
+                            badge = {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(
+                                        "✎",
+                                        color    = TextSecondary.copy(alpha = 0.5f),
+                                        fontSize = 13.sp,
+                                        modifier = Modifier.clickable {
+                                            newName = session.title
+                                            showRenameDialog = true
+                                        }
+                                    )
+                                    Text(
+                                        "✕",
+                                        color    = TextSecondary.copy(alpha = 0.5f),
+                                        fontSize = 13.sp,
+                                        modifier = Modifier.clickable {
+                                            showDeleteConfirm = true
+                                        }
+                                    )
+                                }
+                            },
+                            colors = NavigationDrawerItemDefaults.colors(
                                 selectedContainerColor   = SurfaceVariant,
                                 unselectedContainerColor = Color.Transparent
                             )
                         )
+
+                        // Diálogo renombrar
+                        if (showRenameDialog) {
+                            AlertDialog(
+                                onDismissRequest = { showRenameDialog = false },
+                                containerColor   = SurfaceDark,
+                                title = { Text("Renombrar", color = TextPrimary) },
+                                text  = {
+                                    OutlinedTextField(
+                                        value         = newName,
+                                        onValueChange = { newName = it },
+                                        singleLine    = true,
+                                        colors        = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor   = CyanNeon,
+                                            unfocusedBorderColor = SurfaceVariant,
+                                            focusedTextColor     = TextPrimary,
+                                            unfocusedTextColor   = TextPrimary
+                                        )
+                                    )
+                                },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        viewModel.renameSession(session.sessionId, newName)
+                                        showRenameDialog = false
+                                    }) { Text("Guardar", color = CyanNeon) }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showRenameDialog = false }) {
+                                        Text("Cancelar", color = TextSecondary)
+                                    }
+                                }
+                            )
+                        }
+
+                        // Diálogo eliminar
+                        if (showDeleteConfirm) {
+                            AlertDialog(
+                                onDismissRequest = { showDeleteConfirm = false },
+                                containerColor   = SurfaceDark,
+                                title = { Text("¿Eliminar sesión?", color = TextPrimary) },
+                                text  = {
+                                    Text(
+                                        "Se borrará \"${session.title}\" y todos sus mensajes.",
+                                        color = TextSecondary
+                                    )
+                                },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        viewModel.deleteSession(session.sessionId)
+                                        showDeleteConfirm = false
+                                        scope.launch { drawerState.close() }
+                                    }) { Text("Eliminar", color = Color(0xFFFF5252)) }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showDeleteConfirm = false }) {
+                                        Text("Cancelar", color = TextSecondary)
+                                    }
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -128,12 +212,7 @@ fun NeuralQuartzApp(
             topBar = {
                 CenterAlignedTopAppBar(
                     title = {
-                        Text(
-                            text       = "Modula",
-                            color      = CyanNeon,
-                            fontSize   = 18.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Text("Modula", color = CyanNeon, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     },
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
@@ -143,9 +222,9 @@ fun NeuralQuartzApp(
                     actions = {
                         IconButton(onClick = onBackToForge) {
                             Icon(
-                                imageVector        = Icons.Default.ArrowBack,
+                                Icons.Default.ArrowBack,
                                 contentDescription = "Inicio",
-                                tint               = TextSecondary
+                                tint = TextSecondary
                             )
                         }
                     },
@@ -185,9 +264,7 @@ fun NeuralChatScreen(
     val scope        = rememberCoroutineScope()
 
     LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.lastIndex)
-        }
+        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
     }
 
     val docPickerLauncher = rememberLauncherForActivityResult(
@@ -212,8 +289,7 @@ fun NeuralChatScreen(
             .fillMaxSize()
             .background(ObsidianBlack)
     ) {
-
-        // ── LISTA DE MENSAJES ─────────────────────────────────────
+        // ── MENSAJES ──────────────────────────────────────────────
         LazyColumn(
             state               = listState,
             modifier            = Modifier
@@ -222,12 +298,10 @@ fun NeuralChatScreen(
             contentPadding      = PaddingValues(vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            items(messages) { msg ->
-                MessageBubble(msg)
-            }
+            items(messages) { msg -> MessageBubble(msg) }
         }
 
-        // ── BARRA DE STATS ────────────────────────────────────────
+        // ── STATS ─────────────────────────────────────────────────
         AnimatedVisibility(
             visible = isGenerating || stats.tokensGenerated > 0,
             enter   = fadeIn() + expandVertically(),
@@ -236,7 +310,7 @@ fun NeuralChatScreen(
             StatsBar(stats = stats, isGenerating = isGenerating)
         }
 
-        // ── BARRA DE HERRAMIENTAS ─────────────────────────────────
+        // ── HERRAMIENTAS ──────────────────────────────────────────
         Row(
             modifier              = Modifier
                 .fillMaxWidth()
@@ -269,10 +343,9 @@ fun NeuralChatScreen(
                     enabled  = useReasoning,
                     onToggle = { viewModel.toggleReasoning(!useReasoning) }
                 )
-
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text     = "🌐",
+                        "🌐",
                         fontSize = 16.sp,
                         color    = if (useWikipedia) CyanNeon else TextSecondary
                     )
@@ -292,7 +365,7 @@ fun NeuralChatScreen(
             }
         }
 
-        // ── INPUT DE TEXTO ────────────────────────────────────────
+        // ── INPUT ─────────────────────────────────────────────────
         Row(
             modifier          = Modifier
                 .fillMaxWidth()
@@ -303,11 +376,9 @@ fun NeuralChatScreen(
                 value         = inputText.value,
                 onValueChange = { inputText.value = it },
                 modifier      = Modifier.weight(1f),
-                placeholder   = {
-                    Text("Initiate sequence...", color = TextSecondary)
-                },
-                enabled = !isGenerating,
-                colors  = OutlinedTextFieldDefaults.colors(
+                placeholder   = { Text("Initiate sequence...", color = TextSecondary) },
+                enabled       = !isGenerating,
+                colors        = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor   = CyanNeon,
                     unfocusedBorderColor = SurfaceVariant,
                     focusedTextColor     = TextPrimary,
@@ -329,7 +400,7 @@ fun NeuralChatScreen(
                 elevation      = FloatingActionButtonDefaults.elevation(0.dp)
             ) {
                 Text(
-                    text       = "↑",
+                    "↑",
                     fontSize   = 24.sp,
                     color      = if (isGenerating) TextSecondary else ObsidianBlack,
                     fontWeight = FontWeight.Bold
@@ -370,14 +441,11 @@ fun ReasoningToggle(enabled: Boolean, onToggle: () -> Unit) {
 }
 
 // =====================================================================
-// BARRA DE STATS DE GENERACIÓN
+// STATS BAR
 // =====================================================================
 
 @Composable
-fun StatsBar(
-    stats: com.modulaappr1.viewmodel.GenerationStats,
-    isGenerating: Boolean
-) {
+fun StatsBar(stats: GenerationStats, isGenerating: Boolean) {
     Row(
         modifier              = Modifier
             .fillMaxWidth()
@@ -393,21 +461,15 @@ fun StatsBar(
                 strokeWidth = 1.5.dp
             )
         }
-
         StatChip(label = "tokens", value = stats.tokensGenerated.toString())
-
         if (stats.tokensPerSecond > 0f) {
             StatChip(
                 label = "t/s",
                 value = String.format(Locale.US, "%.1f", stats.tokensPerSecond)
             )
         }
-
         if (stats.promptMs > 0L) {
-            StatChip(
-                label = "prefill",
-                value = "${stats.promptMs}ms"
-            )
+            StatChip(label = "prefill", value = "${stats.promptMs}ms")
         }
     }
 }
@@ -446,7 +508,7 @@ fun MessageBubble(msg: ChatMessage) {
     ) {
         if (!msg.isUser) {
             Text(
-                text       = "Modula",
+                "Modula",
                 color      = CyanNeon,
                 fontSize   = 10.sp,
                 fontWeight = FontWeight.Bold,
@@ -454,7 +516,7 @@ fun MessageBubble(msg: ChatMessage) {
             )
         }
 
-        // ── BLOQUE DE RAZONAMIENTO ────────────────────────────────
+        // Bloque de razonamiento
         if (!msg.isUser && (msg.thoughtProcess.isNotEmpty() || msg.isThinking)) {
             ThoughtBlock(
                 thought    = msg.thoughtProcess,
@@ -465,7 +527,7 @@ fun MessageBubble(msg: ChatMessage) {
             Spacer(modifier = Modifier.height(6.dp))
         }
 
-        // ── CONTENIDO DEL MENSAJE ─────────────────────────────────
+        // Contenido
         if (msg.content.isNotEmpty() || msg.isUser) {
             Box(
                 modifier = Modifier
@@ -475,15 +537,10 @@ fun MessageBubble(msg: ChatMessage) {
             ) {
                 when {
                     msg.isUser -> {
-                        // Usuario — texto plano siempre
-                        Text(
-                            text     = msg.content,
-                            color    = TextPrimary,
-                            fontSize = 16.sp
-                        )
+                        Text(msg.content, color = TextPrimary, fontSize = 16.sp)
                     }
-                    msg.isThinking || msg.content.isEmpty() -> {
-                        // Generando — texto plano, sin WebView
+                    msg.isThinking || msg.isStreaming || msg.content.isEmpty() -> {
+                        // Texto plano durante streaming — cero parpadeo
                         Text(
                             text       = msg.content,
                             color      = TextPrimary,
@@ -492,7 +549,7 @@ fun MessageBubble(msg: ChatMessage) {
                         )
                     }
                     else -> {
-                        // Terminó — WebView con KaTeX + Markdown
+                        // Solo al terminar — WebView con KaTeX
                         MarkdownLienzo(markdownText = msg.content)
                     }
                 }
@@ -518,13 +575,11 @@ fun ThoughtBlock(
             .clip(RoundedCornerShape(10.dp))
             .background(SurfaceVariant)
             .border(
-                width = 1.dp,
-                color = if (isThinking) CyanNeon.copy(alpha = 0.6f)
-                        else            CyanDim.copy(alpha = 0.3f),
-                shape = RoundedCornerShape(10.dp)
+                1.dp,
+                if (isThinking) CyanNeon.copy(alpha = 0.6f) else CyanDim.copy(alpha = 0.3f),
+                RoundedCornerShape(10.dp)
             )
     ) {
-        // Cabecera — toque para colapsar/expandir
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -535,13 +590,13 @@ fun ThoughtBlock(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text     = if (isThinking) "⟳" else "✓",
+                    if (isThinking) "⟳" else "✓",
                     color    = CyanNeon,
                     fontSize = 12.sp
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text       = if (isThinking) "Razonando..." else "Proceso de razonamiento",
+                    if (isThinking) "Razonando..." else "Proceso de razonamiento",
                     color      = CyanNeon,
                     fontSize   = 12.sp,
                     fontWeight = FontWeight.SemiBold
@@ -551,14 +606,13 @@ fun ThoughtBlock(
                 Icon(
                     imageVector        = if (expanded) Icons.Default.KeyboardArrowUp
                                          else          Icons.Default.KeyboardArrowDown,
-                    contentDescription = if (expanded) "Colapsar" else "Expandir",
+                    contentDescription = null,
                     tint               = CyanDim,
                     modifier           = Modifier.size(18.dp)
                 )
             }
         }
 
-        // Contenido — animado
         AnimatedVisibility(
             visible = expanded,
             enter   = expandVertically() + fadeIn(),
