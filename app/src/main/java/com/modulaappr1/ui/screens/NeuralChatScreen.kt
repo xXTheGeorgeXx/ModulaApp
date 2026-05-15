@@ -414,7 +414,7 @@ fun StatsBar(
 
 @Composable
 fun StatChip(label: String, value: String) {
-    Row(verticalAlignment = Alignment.Baseline) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             text       = value,
             color      = CyanNeon,

@@ -1,36 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Permisos para leer los modelos .gguf y PDFs del almacenamiento -->
+    <!-- Almacenamiento -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    
-    <!-- 🌐 Permiso para el Agente de Wikipedia (RAG Online) -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
+    <!-- Wikipedia + descarga de modelos -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
         android:icon="@drawable/ic_modula"
         android:roundIcon="@drawable/ic_modula"
         android:allowBackup="true"
-        android:label="Modula" 
+        android:label="Modula"
         android:supportsRtl="true"
         android:requestLegacyExternalStorage="true"
+        android:hardwareAccelerated="true"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
-        
-        <!-- =================================================================== -->
-        <!-- 🔑 EL PASE VIP DE LITERT (Bypass del Firewall del NDK de Android)   -->
-        <!-- =================================================================== -->
-        <uses-native-library android:name="libOpenCL.so" android:required="false" />
+
+        <!-- GPU / OpenCL para llama.cpp -->
+        <uses-native-library android:name="libOpenCL.so"       android:required="false" />
         <uses-native-library android:name="libOpenCL-pixel.so" android:required="false" />
-        <uses-native-library android:name="libGLES_mali.so" android:required="false" />
+        <uses-native-library android:name="libGLES_mali.so"    android:required="false" />
 
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
     </application>
 </manifest>
