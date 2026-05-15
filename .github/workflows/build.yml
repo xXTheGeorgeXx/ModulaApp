@@ -27,7 +27,8 @@ jobs:
 
     # 🛠️ MODIFICACIÓN AQUÍ: Añadimos 'clean', '--stacktrace' y '--info'
     - name: Forjar APK
-      run: gradle clean assembleDebug --stacktrace --info
+      run: gradle assembleDebug --info
+      #--stacktrace --info clean
 
     - name: Subir APK Generado
       uses: actions/upload-artifact@v4
