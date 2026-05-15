@@ -64,11 +64,12 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     
+    /*
     // Markwon (Markdown, Tablas y Código)
     val markwon_version = "4.6.2"
     implementation("io.noties.markwon:core:$markwon_version")
     implementation("io.noties.markwon:syntax-highlight:$markwon_version") 
-    implementation("io.noties.markwon:ext-tables:$markwon_version") 
+    implementation("io.noties.markwon:ext-tables:$markwon_version") */
     
     // Prism4j (El motor de coloreado de código y su generador)
     implementation("io.noties:prism4j:2.0.0")          
