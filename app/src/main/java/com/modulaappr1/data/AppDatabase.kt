@@ -5,7 +5,7 @@ import androidx.room.*
 import kotlinx.coroutines.flow.Flow
 
 // =====================================================================
-// 1. ENTIDADES (Las Tablas)
+// ENTIDADES
 // =====================================================================
 
 @Entity(tableName = "chat_sessions")
@@ -21,7 +21,7 @@ data class ChatSession(
         entity = ChatSession::class,
         parentColumns = ["sessionId"],
         childColumns = ["sessionId"],
-        onDelete = ForeignKey.CASCADE // Si se borra la sesión, se borran sus mensajes
+        onDelete = ForeignKey.CASCADE
     )],
     indices = [Index("sessionId")]
 )
@@ -34,46 +34,39 @@ data class ChatMessageEntity(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+// Reemplaza VectorChunk — sin embeddings, sin segundo modelo
+@Entity(tableName = "documents")
+data class DocumentEntity(
+    @PrimaryKey(autoGenerate = true) val documentId: Long = 0,
+    val name: String,           // "Fisica_Cuantica.md"
+    val sourceType: String,     // "TXT" | "MD" | "PDF_CONVERTED"
+    val filePath: String,       // Ruta al .md en filesDir/modula_docs/
+    val createdAt: Long = System.currentTimeMillis()
+)
+
 @Entity(
-    tableName = "vector_chunks",
+    tableName = "document_chunks",
     foreignKeys = [ForeignKey(
-        entity = ChatSession::class,
-        parentColumns = ["sessionId"],
-        childColumns = ["sessionId"],
+        entity = DocumentEntity::class,
+        parentColumns = ["documentId"],
+        childColumns = ["documentId"],
         onDelete = ForeignKey.CASCADE
     )],
-    indices =[Index("sessionId")]
+    indices = [Index("documentId")]
 )
-data class VectorChunk(
+data class DocumentChunk(
     @PrimaryKey(autoGenerate = true) val chunkId: Long = 0,
-    val sessionId: Long,
-    val textContent: String,
-    val embedding: FloatArray
+    val documentId: Long,
+    val chunkIndex: Int,
+    val textContent: String     // Texto plano — sin FloatArray
 )
 
 // =====================================================================
-// 2. CONVERTIDOR DE VECTORES (Para FloatArray)
-// =====================================================================
-
-class VectorConverters {
-    @TypeConverter
-    fun fromFloatArray(array: FloatArray?): String? = array?.joinToString(",")
-
-    @TypeConverter
-    fun toFloatArray(data: String?): FloatArray? {
-        if (data.isNullOrEmpty()) return null
-        val stringArray = data.split(",")
-        return FloatArray(stringArray.size) { stringArray[it].toFloat() }
-    }
-}
-
-// =====================================================================
-// 3. LOS DAOs (Data Access Objects)
+// DAOs
 // =====================================================================
 
 @Dao
 interface ChatDao {
-    // Sesiones
     @Insert
     suspend fun insertSession(session: ChatSession): Long
 
@@ -86,7 +79,6 @@ interface ChatDao {
     @Query("DELETE FROM chat_sessions WHERE sessionId = :id")
     suspend fun deleteSession(id: Long)
 
-    // Mensajes
     @Insert
     suspend fun insertMessage(message: ChatMessageEntity)
 
@@ -95,43 +87,63 @@ interface ChatDao {
 }
 
 @Dao
-interface VectorDao {
+interface DocumentDao {
     @Insert
-    suspend fun insertChunk(chunk: VectorChunk)
+    suspend fun insertDocument(doc: DocumentEntity): Long
 
-    @Query("SELECT * FROM vector_chunks WHERE sessionId = :sessionId")
-    suspend fun getVectorsForSession(sessionId: Long): List<VectorChunk>
+    @Insert
+    suspend fun insertChunk(chunk: DocumentChunk)
+
+    @Query("SELECT * FROM documents ORDER BY createdAt DESC")
+    fun getAllDocuments(): Flow<List<DocumentEntity>>
+
+    @Query("SELECT * FROM documents ORDER BY createdAt DESC")
+    suspend fun getAllDocumentsOnce(): List<DocumentEntity>
+
+    @Query("SELECT * FROM document_chunks WHERE documentId = :documentId ORDER BY chunkIndex ASC")
+    suspend fun getChunksForDocument(documentId: Long): List<DocumentChunk>
+
+    // Todos los chunks de todos los documentos — RAG global cross-session
+    @Query("SELECT * FROM document_chunks")
+    suspend fun getAllChunks(): List<DocumentChunk>
+
+    @Query("DELETE FROM documents WHERE documentId = :documentId")
+    suspend fun deleteDocument(documentId: Long)
+
+    @Query("SELECT COUNT(*) FROM documents")
+    suspend fun getDocumentCount(): Int
 }
 
 // =====================================================================
-// 4. LA BASE DE DATOS PRINCIPAL
+// BASE DE DATOS — versión 2
 // =====================================================================
 
 @Database(
-    entities =[ChatSession::class, ChatMessageEntity::class, VectorChunk::class],
-    version = 1,
+    entities = [
+        ChatSession::class,
+        ChatMessageEntity::class,
+        DocumentEntity::class,
+        DocumentChunk::class
+    ],
+    version = 2,
     exportSchema = false
 )
-@TypeConverters(VectorConverters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun chatDao(): ChatDao
-    abstract fun vectorDao(): VectorDao
+    abstract fun documentDao(): DocumentDao
 
     companion object {
-        @Volatile
-        private var INSTANCE: AppDatabase? = null
+        @Volatile private var INSTANCE: AppDatabase? = null
 
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
-                val instance = Room.databaseBuilder(
+                Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "modula_neural_db"
                 )
                 .fallbackToDestructiveMigration()
-                .build()
-                INSTANCE = instance
-                instance
+                .build().also { INSTANCE = it }
             }
         }
     }

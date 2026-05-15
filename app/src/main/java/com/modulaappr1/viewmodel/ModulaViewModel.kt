@@ -9,7 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.modulaappr1.ModulaEngine
 import com.modulaappr1.TokenCallback
 import com.modulaappr1.data.ChatDao
-import com.modulaappr1.data.VectorDao
+import com.modulaappr1.data.DocumentDao
 import com.modulaappr1.data.ChatMessageEntity
 import com.modulaappr1.data.ChatSession
 import com.modulaappr1.domain.DocumentProcessor
@@ -28,7 +28,10 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.Locale
 
-// 1. Estructura del Mensaje (UI)
+// =====================================================================
+// DATA CLASSES
+// =====================================================================
+
 data class ChatMessage(
     val isUser: Boolean,
     val content: String = "",
@@ -36,144 +39,216 @@ data class ChatMessage(
     val isThinking: Boolean = false
 )
 
+data class GenerationStats(
+    val tokensGenerated: Int = 0,
+    val tokensPerSecond: Float = 0f,
+    val promptMs: Long = 0L
+)
+
 enum class EngineState { IDLE, MODEL_SELECTED, LOADING, READY, ERROR }
+
+// =====================================================================
+// VIEWMODEL
+// =====================================================================
 
 class ModulaViewModel(
     private val chatDao: ChatDao,
-    private val vectorDao: VectorDao
+    private val documentDao: DocumentDao
 ) : ViewModel() {
-    
-    private val engine = ModulaEngine()
-    private val ragEngine = RAGEngine(engine)
-    private val wikipediaAgent = WikipediaAgent()
-    private val documentProcessor = DocumentProcessor(engine, vectorDao)
+
+    private val engine            = ModulaEngine()
+    private val ragEngine         = RAGEngine()
+    private val wikipediaAgent    = WikipediaAgent()
+    private val documentProcessor = DocumentProcessor(engine, documentDao)
 
     var currentHandle: Long = 0L
-        private set
-    var embedHandle: Long = 0L
         private set
 
     private var activeModelFile: File? = null
 
-    // --- ESTADOS REACTIVOS ---
-    private val _engineState = MutableStateFlow(EngineState.IDLE)
+    // =====================================================================
+    // ESTADOS REACTIVOS
+    // =====================================================================
+
+    private val _generationStats  = MutableStateFlow(GenerationStats())
+    val generationStats: StateFlow<GenerationStats> = _generationStats.asStateFlow()
+
+    private val _engineState      = MutableStateFlow(EngineState.IDLE)
     val engineState: StateFlow<EngineState> = _engineState.asStateFlow()
 
-    private val _statusMessage = MutableStateFlow("Esperando selección de binario...")
+    private val _statusMessage    = MutableStateFlow("Selecciona un modelo para comenzar.")
     val statusMessage: StateFlow<String> = _statusMessage.asStateFlow()
 
-    // --- TELEMETRÍA DEL ESCÁNER GGUF ---
-    private val _scannedLayers = MutableStateFlow(0)
+    private val _scannedLayers    = MutableStateFlow(0)
     val scannedLayers: StateFlow<Int> = _scannedLayers.asStateFlow()
-    
-    private val _scannedTensors = MutableStateFlow(0L)
+
+    private val _scannedTensors   = MutableStateFlow(0L)
     val scannedTensors: StateFlow<Long> = _scannedTensors.asStateFlow()
 
-    private val _deviceRamGB = MutableStateFlow(0f)
+    private val _deviceRamGB      = MutableStateFlow(0f)
     val deviceRamGB: StateFlow<Float> = _deviceRamGB.asStateFlow()
 
-    private val _hardwareMessage = MutableStateFlow("Analizando Hardware...")
+    private val _hardwareMessage  = MutableStateFlow("Analizando hardware...")
     val hardwareMessage: StateFlow<String> = _hardwareMessage.asStateFlow()
 
-    // Configuración Base de la Interfaz
-    private val _contextSize = MutableStateFlow(4096f)
+    private val _contextSize      = MutableStateFlow(4096f)
     val contextSize: StateFlow<Float> = _contextSize.asStateFlow()
 
-    private val _temperature = MutableStateFlow(0.7f)
+    private val _temperature      = MutableStateFlow(0.7f)
     val temperature: StateFlow<Float> = _temperature.asStateFlow()
 
-    private val _gpuLayers = MutableStateFlow(0f)
+    private val _gpuLayers        = MutableStateFlow(0f)
     val gpuLayers: StateFlow<Float> = _gpuLayers.asStateFlow()
 
-    private val _isGenerating = MutableStateFlow(false)
+    private val _isGenerating     = MutableStateFlow(false)
     val isGenerating: StateFlow<Boolean> = _isGenerating.asStateFlow()
-    
-    var useWikipedia = MutableStateFlow(false)
 
-    // --- HISTORIAL Y SESIONES (RAG / SQLite) ---
+    private val _systemPrompt     = MutableStateFlow("")
+    val systemPrompt: StateFlow<String> = _systemPrompt.asStateFlow()
+
+    private val _documentProgress = MutableStateFlow("")
+    val documentProgress: StateFlow<String> = _documentProgress.asStateFlow()
+
+    // Expuestos directamente (toggle desde la UI)
+    val useWikipedia = MutableStateFlow(false)
+    val useReasoning = MutableStateFlow(true)
+
+    // Biblioteca de documentos como Flow para la UI
+    val documentLibrary = documentDao.getAllDocuments()
+
+    // Historial de sesiones para el drawer
+    val sessionHistory = chatDao.getAllSessions()
+
     var currentSessionId: Long = 0L
         private set
 
-    val sessionHistory = chatDao.getAllSessions()
     private val _chatMessages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val chatMessages: StateFlow<List<ChatMessage>> = _chatMessages.asStateFlow()
 
-    fun updateContextSize(size: Float) { _contextSize.value = size }
-    fun updateTemperature(temp: Float) { _temperature.value = temp }
-    fun updateGpuLayers(layers: Float) { _gpuLayers.value = layers }
+    // =====================================================================
+    // SETTERS SIMPLES
+    // =====================================================================
 
-    // ==========================================
-    // ESCÁNER BINARIO GGUF (Ingeniería Inversa)
-    // ==========================================
+    fun updateContextSize(v: Float)   { _contextSize.value = v }
+    fun updateTemperature(v: Float)   { _temperature.value = v }
+    fun updateGpuLayers(v: Float)     { _gpuLayers.value = v }
+    fun updateSystemPrompt(v: String) { _systemPrompt.value = v }
+    fun toggleWikipedia(v: Boolean)   { useWikipedia.value = v }
+    fun toggleReasoning(v: Boolean)   { useReasoning.value = v }
+
+    fun deleteDocument(documentId: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            documentDao.deleteDocument(documentId)
+        }
+    }
+
+    // =====================================================================
+    // ESCÁNER GGUF
+    // =====================================================================
+
     private fun scanGGUF(file: File): Pair<Int, Long> {
-        var layers = 35 // Fallback promedio
+        var layers      = 35
         var tensorCount = 0L
         try {
-            val raf = RandomAccessFile(file, "r")
-            val buffer = ByteArray(1024 * 1024) 
+            val raf    = RandomAccessFile(file, "r")
+            val buffer = ByteArray(1024 * 1024)
             raf.read(buffer)
             raf.close()
-            
+
             val bb = ByteBuffer.wrap(buffer).order(ByteOrder.LITTLE_ENDIAN)
-            if (bb.int == 0x46554747) { 
-                bb.int 
-                tensorCount = bb.long 
+            if (bb.int == 0x46554747) {
+                bb.int
+                tensorCount = bb.long
             }
-            
+
             val target = "block_count".toByteArray(Charsets.UTF_8)
             for (i in 0 until buffer.size - target.size - 8) {
                 var found = true
                 for (j in target.indices) {
-                    if (buffer[i + j] != target[j]) {
-                        found = false
-                        break
-                    }
+                    if (buffer[i + j] != target[j]) { found = false; break }
                 }
                 if (found) {
                     val typeOffset = i + target.size
-                    val valType = ByteBuffer.wrap(buffer, typeOffset, 4).order(ByteOrder.LITTLE_ENDIAN).int
-                    if (valType == 4) { 
-                        layers = ByteBuffer.wrap(buffer, typeOffset + 4, 4).order(ByteOrder.LITTLE_ENDIAN).int
+                    val valType = ByteBuffer.wrap(buffer, typeOffset, 4)
+                        .order(ByteOrder.LITTLE_ENDIAN).int
+                    if (valType == 4) {
+                        layers = ByteBuffer.wrap(buffer, typeOffset + 4, 4)
+                            .order(ByteOrder.LITTLE_ENDIAN).int
                         break
                     }
                 }
             }
-        } catch (e: Exception) { e.printStackTrace() }
-        
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
         return Pair(layers, tensorCount)
     }
 
-    // ==========================================
-    // PASO 1: SELECCIONAR Y ESCANEAR EL MODELO
-    // ==========================================
+    // =====================================================================
+    // SELECCIÓN DE MODELO
+    // =====================================================================
+
     fun selectModelFromFile(context: Context, file: File) {
         activeModelFile = file
         viewModelScope.launch(Dispatchers.IO) {
             val (layers, tensors) = scanGGUF(file)
-            _scannedLayers.value = layers
+            _scannedLayers.value  = layers
             _scannedTensors.value = tensors
 
             val actManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-            val memInfo = ActivityManager.MemoryInfo()
+            val memInfo    = ActivityManager.MemoryInfo()
             actManager.getMemoryInfo(memInfo)
             val ramGB = memInfo.totalMem / (1024f * 1024f * 1024f)
             _deviceRamGB.value = ramGB
 
             if (ramGB >= 11.5f) {
-                _gpuLayers.value = layers.toFloat()
-                _hardwareMessage.value = "Hardware High-End detectado. Aceleración GPU habilitada por defecto."
+                _gpuLayers.value      = layers.toFloat()
+                _hardwareMessage.value = "Hardware High-End — Aceleración GPU habilitada."
             } else {
-                _gpuLayers.value = 0f
-                _hardwareMessage.value = "Hardware Gama Media detectado. Optimizado para CPU pura garantizando estabilidad."
+                _gpuLayers.value      = 0f
+                _hardwareMessage.value = "Hardware Gama Media — Optimizado para CPU."
             }
+            _statusMessage.value = _hardwareMessage.value
+            _engineState.value   = EngineState.MODEL_SELECTED
+        }
+    }
 
-            _engineState.value = EngineState.MODEL_SELECTED
+    // Intenta obtener el File real sin copiar — crítico para archivos grandes
+    private fun resolveUriToFile(context: Context, uri: Uri): File? {
+        if (uri.scheme == "file") {
+            return uri.path?.let { File(it) }?.takeIf { it.exists() && it.canRead() }
+        }
+        val path          = uri.path ?: return null
+        val primaryPrefix = "/document/primary:"
+        val rawPrefix     = "/document/raw:"
+
+        return when {
+            path.startsWith(primaryPrefix) -> {
+                val rel = path.removePrefix(primaryPrefix)
+                listOf(
+                    File("/storage/emulated/0/$rel"),
+                    File("/sdcard/$rel")
+                ).firstOrNull { it.exists() && it.canRead() }
+            }
+            path.startsWith(rawPrefix) -> {
+                File(path.removePrefix(rawPrefix)).takeIf { it.exists() && it.canRead() }
+            }
+            else -> null
         }
     }
 
     fun selectModelFromUri(context: Context, uri: Uri) {
-        _engineState.value = EngineState.LOADING
-        _statusMessage.value = "Montando archivo en caché segura..."
+        // Intento 1: carga directa sin copiar
+        val directFile = resolveUriToFile(context, uri)
+        if (directFile != null) {
+            _statusMessage.value = "Archivo detectado en almacenamiento local."
+            selectModelFromFile(context, directFile)
+            return
+        }
+
+        // Intento 2: fallback — solo si es proveedor externo (Drive, etc.)
+        _engineState.value   = EngineState.LOADING
+        _statusMessage.value = "Copiando desde proveedor externo (solo una vez)..."
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val file = File(context.filesDir, "active_model.gguf")
@@ -182,243 +257,322 @@ class ModulaViewModel(
                 }
                 selectModelFromFile(context, file)
             } catch (e: Exception) {
-                _engineState.value = EngineState.ERROR
-                _statusMessage.value = "Error al copiar archivo: ${e.message}"
+                _engineState.value   = EngineState.ERROR
+                _statusMessage.value = "Error al acceder al archivo: ${e.message}"
             }
         }
     }
 
-    // ==========================================
-    // PASO 2: LA FORJA (Encender el Motor)
-    // ==========================================
+    // =====================================================================
+    // INICIALIZACIÓN DEL MOTOR
+    // =====================================================================
+
     fun forgeEngine() {
         val file = activeModelFile ?: return
-        _engineState.value = EngineState.LOADING
-        
+        _engineState.value   = EngineState.LOADING
+        _statusMessage.value = "Inicializando motor..."
+
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                _statusMessage.value = "Inyectando pesos en RAM/VRAM con ${_contextSize.value.toInt()} ctx..."
-                val startTime = System.currentTimeMillis()
-                
-                val cores = Runtime.getRuntime().availableProcessors()
-                val goldCores = if (cores >= 8) 3 else Math.max(1, cores / 2)
+                val t0       = System.currentTimeMillis()
+                val cores    = Runtime.getRuntime().availableProcessors()
+                val goldCores = if (cores >= 8) 3 else maxOf(1, cores / 2)
 
                 currentHandle = engine.initEngine(
-                    modelPath = file.absolutePath, 
-                    gpuLayers = _gpuLayers.value.toInt(), 
-                    ctxSize = _contextSize.value.toInt(), 
-                    threads = goldCores
+                    modelPath = file.absolutePath,
+                    gpuLayers = _gpuLayers.value.toInt(),
+                    ctxSize   = _contextSize.value.toInt(),
+                    threads   = goldCores
                 )
-                
-                val embedFile = File(file.parentFile, "nomic-embed.gguf")
-                if (embedFile.exists()) {
-                    embedHandle = engine.initEngine(embedFile.absolutePath, 0, 512, 1)
-                }
 
-                val loadTime = (System.currentTimeMillis() - startTime) / 1000.0
+                val elapsed  = (System.currentTimeMillis() - t0) / 1000.0
+                val docCount = documentDao.getDocumentCount()
 
                 if (currentHandle != 0L) {
-                    _engineState.value = EngineState.READY
-                    val embedStatus = if (embedHandle != 0L) "+ RAG" else "(Sin RAG)"
-                    _statusMessage.value = "Sistema online $embedStatus en ${String.format(Locale.US, "%.1f", loadTime)}s."
+                    val ragStatus    = if (docCount > 0) "+ RAG ($docCount docs)" else "(sin docs)"
+                    _engineState.value   = EngineState.READY
+                    _statusMessage.value =
+                        "Online $ragStatus — ${String.format(Locale.US, "%.1f", elapsed)}s"
                 } else {
-                    _engineState.value = EngineState.ERROR
-                    _statusMessage.value = "Fallo de hardware al inicializar el modelo."
+                    _engineState.value   = EngineState.ERROR
+                    _statusMessage.value = "Error al inicializar el motor."
                 }
             } catch (e: Exception) {
-                _engineState.value = EngineState.ERROR
+                _engineState.value   = EngineState.ERROR
                 _statusMessage.value = "Excepción: ${e.localizedMessage}"
             }
         }
     }
 
-    // =========================================================
-    // INGESTA DE DOCUMENTOS (Para el botón 📎 de la UI)
-    // =========================================================
-    fun processDocument(context: Context, uri: Uri) {
-        if (embedHandle == 0L) {
-            _chatMessages.update { currentList ->
-                currentList + listOf(ChatMessage(isUser = false, content = "⚠️ Sistema RAG inactivo. Falta modelo nomic-embed.gguf."))
-            }
-            return
-        }
+    // =====================================================================
+    // INGESTA DE DOCUMENTOS
+    // =====================================================================
 
+    fun processDocument(context: Context, uri: Uri, displayName: String) {
         viewModelScope.launch(Dispatchers.IO) {
+            // Crear sesión si no hay ninguna activa
             if (currentSessionId == 0L) {
-                currentSessionId = chatDao.insertSession(ChatSession(title = "Análisis de Documento"))
-            }
-
-            _chatMessages.update { currentList ->
-                currentList + listOf(ChatMessage(isUser = false, isThinking = true, thoughtProcess = "📎 Procesando archivo y vectorizando en SQLite..."))
-            }
-
-            documentProcessor.processTextFile(context, uri, currentSessionId, embedHandle)
-
-            _chatMessages.update { currentList ->
-                val finalList = currentList.toMutableList()
-                val finalIndex = finalList.lastIndex
-                finalList[finalIndex] = finalList[finalIndex].copy(
-                    isThinking = false, 
-                    thoughtProcess = "", 
-                    content = "✅ Documento vectorizado y memorizado localmente. Puedes hacerme preguntas sobre él."
+                currentSessionId = chatDao.insertSession(
+                    ChatSession(title = "Análisis: $displayName")
                 )
-                finalList
             }
+
+            addSystemMessage("📎 Procesando: $displayName...")
+
+            val isPdf = displayName.endsWith(".pdf", ignoreCase = true)
+
+            val result = if (isPdf) {
+                documentProcessor.processPdf(
+                    context     = context,
+                    uri         = uri,
+                    displayName = displayName,
+                    modelHandle = currentHandle,
+                    onProgress  = { msg ->
+                        _documentProgress.value = msg
+                        updateLastSystemMessage(msg)
+                    }
+                )
+            } else {
+                documentProcessor.processTextFile(
+                    context     = context,
+                    uri         = uri,
+                    displayName = displayName,
+                    onProgress  = { msg ->
+                        _documentProgress.value = msg
+                        updateLastSystemMessage(msg)
+                    }
+                )
+            }
+
+            result.fold(
+                onSuccess = { doc ->
+                    updateLastSystemMessage(
+                        "✅ **${doc.name}** añadido a la biblioteca.\n" +
+                        "Puedes hacerme preguntas sobre su contenido."
+                    )
+                },
+                onFailure = { e ->
+                    updateLastSystemMessage("❌ Error: ${e.message}")
+                }
+            )
+            _documentProgress.value = ""
         }
     }
 
-    // ==========================================
-    // EL CHAT AGÉNTICO
-    // ==========================================
-    fun sendMessage(userInput: String) {
+    private fun addSystemMessage(content: String) {
+        _chatMessages.update { it + ChatMessage(isUser = false, content = content) }
+    }
+
+    private fun updateLastSystemMessage(content: String) {
+        _chatMessages.update { list ->
+            if (list.isEmpty()) return@update list
+            val m = list.toMutableList()
+            m[m.lastIndex] = m[m.lastIndex].copy(content = content, isThinking = false)
+            m
+        }
+    }
+
+    // =====================================================================
+    // CHAT AGÉNTICO
+    // =====================================================================
+
+    fun sendMessage(context: Context, userInput: String) {
         if (userInput.isBlank() || currentHandle == 0L || _isGenerating.value) return
-        _isGenerating.value = true
+
+        // FIX 2: reset de stats antes de cada mensaje nuevo
+        _generationStats.value = GenerationStats()
+        _isGenerating.value    = true
 
         viewModelScope.launch(Dispatchers.IO) {
+            // Crear sesión si no existe
             if (currentSessionId == 0L) {
-                val title = if (userInput.length > 25) userInput.take(25) + "..." else userInput
+                val title = if (userInput.length > 25) userInput.take(25) + "…" else userInput
                 currentSessionId = chatDao.insertSession(ChatSession(title = title))
             }
 
-            chatDao.insertMessage(ChatMessageEntity(sessionId = currentSessionId, isUser = true, content = userInput))
-
-            _chatMessages.update { currentList ->
-                currentList + listOf(
-                    ChatMessage(isUser = true, content = userInput),
-                    ChatMessage(isUser = false, isThinking = true)
+            // Guardar mensaje del usuario en Room
+            chatDao.insertMessage(
+                ChatMessageEntity(
+                    sessionId = currentSessionId,
+                    isUser    = true,
+                    content   = userInput
                 )
-            }
-
-            val dbVectors = vectorDao.getVectorsForSession(currentSessionId)
-            
-            val promptDelta = ragEngine.buildAgenticPrompt(
-                userInput = userInput,
-                embedHandle = embedHandle,
-                dbChunks = dbVectors,
-                useWikipedia = useWikipedia.value
             )
 
-            val ctxCount = engine.getContextCount(currentHandle)
-            val promptToSend = if (ctxCount == 0) {
-                val history = _chatMessages.value.dropLast(1) 
-                val builder = StringBuilder()
-                for (msg in history) {
-                    if (msg.isUser) {
-                        builder.append("<start_of_turn>user\n${msg.content}<end_of_turn>\n")
-                    } else {
-                        if (!msg.content.startsWith("✅") && !msg.content.startsWith("⚠️")) {
-                            builder.append("<start_of_turn>model\n${msg.content}<end_of_turn>\n")
-                        }
-                    }
-                }
-                builder.append(promptDelta).toString()
-            } else {
-                promptDelta
-            }
+            // Añadir mensaje del usuario + placeholder de respuesta al estado
+            _chatMessages.update { it + listOf(
+                ChatMessage(isUser = true, content = userInput),
+                ChatMessage(isUser = false, isThinking = true)
+            )}
 
-            var isThoughtChannel = true
+            // Recuperar contexto RAG global
+            val allChunks  = documentDao.getAllChunks()
+            val networkOk  = try {
+                wikipediaAgent.isNetworkAvailable(context)
+            } catch (e: Exception) { false }
 
+            // Construir prompt agéntico
+            val promptDelta = ragEngine.buildAgenticPrompt(
+                userInput        = userInput,
+                allChunks        = allChunks,
+                useWikipedia     = useWikipedia.value,
+                useReasoning     = useReasoning.value,
+                systemPrompt     = _systemPrompt.value,
+                networkAvailable = networkOk
+            )
+
+            // Prefijo de historial solo si el contexto KV está vacío
+            val ctxCount   = engine.getContextCount(currentHandle)
+            val fullPrompt = if (ctxCount == 0) buildHistoryPrefix() + promptDelta
+                             else promptDelta
+
+            // Variables de tracking
+            var tokenCount        = 0
+            val promptStartMs     = System.currentTimeMillis()
+            var generationStartMs = 0L
+            var isThoughtChannel  = useReasoning.value
+
+            // Generación en streaming
             engine.generateStreaming(
-                handle = currentHandle,
-                prompt = promptToSend,
-                temp = _temperature.value,
-                maxTokens = -1, 
-                callback = object : TokenCallback {
+                handle    = currentHandle,
+                prompt    = fullPrompt,
+                temp      = _temperature.value,
+                maxTokens = -1,
+                callback  = object : TokenCallback {
                     override fun onToken(token: String) {
-                        _chatMessages.update { currentList ->
-                            val updatedList = currentList.toMutableList()
-                            val lastIndex = updatedList.lastIndex
-                            var lastMsg = updatedList[lastIndex]
+                        // Marca el inicio real de la generación en el primer token
+                        if (tokenCount == 0) generationStartMs = System.currentTimeMillis()
+                        tokenCount++
 
-                            if (token.contains("<channel|>")) {
-                                isThoughtChannel = false
-                                lastMsg = lastMsg.copy(isThinking = false)
-                            } else if (token.contains("<|channel>thought")) {
-                                isThoughtChannel = true
-                            } else {
-                                lastMsg = if (isThoughtChannel) {
-                                    lastMsg.copy(thoughtProcess = lastMsg.thoughtProcess + token)
-                                } else {
-                                    lastMsg.copy(content = lastMsg.content + token)
+                        // Actualizar stats en tiempo real
+                        val elapsedSec = (System.currentTimeMillis() - generationStartMs) / 1000f
+                        if (elapsedSec > 0f) {
+                            _generationStats.value = GenerationStats(
+                                tokensGenerated = tokenCount,
+                                tokensPerSecond = tokenCount / elapsedSec,
+                                promptMs        = if (generationStartMs > 0L)
+                                    generationStartMs - promptStartMs else 0L
+                            )
+                        }
+
+                        // Enrutar token al canal correcto
+                        _chatMessages.update { list ->
+                            val m   = list.toMutableList()
+                            var msg = m[m.lastIndex]
+                            when {
+                                token.contains("<channel|>") -> {
+                                    isThoughtChannel = false
+                                    msg = msg.copy(isThinking = false)
+                                }
+                                token.contains("<|channel>thought") -> {
+                                    isThoughtChannel = true
+                                }
+                                else -> {
+                                    msg = if (isThoughtChannel)
+                                        msg.copy(thoughtProcess = msg.thoughtProcess + token)
+                                    else
+                                        msg.copy(content = msg.content + token)
                                 }
                             }
-                            updatedList[lastIndex] = lastMsg
-                            updatedList
+                            m[m.lastIndex] = msg
+                            m
                         }
                     }
                 }
             )
-            
-            var finalAiContent = ""
-            var finalAiThought = ""
-            
-            _chatMessages.update { currentList ->
-                val finalList = currentList.toMutableList()
-                val finalIndex = finalList.lastIndex
-                val finishedMsg = finalList[finalIndex].copy(isThinking = false)
-                finalList[finalIndex] = finishedMsg
-                
-                finalAiContent = finishedMsg.content
-                finalAiThought = finishedMsg.thoughtProcess
-                finalList
+
+            // FIX 1: garantizar que isThinking = false al terminar la generación
+            _chatMessages.update { list ->
+                val m = list.toMutableList()
+                m[m.lastIndex] = m[m.lastIndex].copy(isThinking = false)
+                m
             }
 
-            chatDao.insertMessage(ChatMessageEntity(
-                sessionId = currentSessionId, 
-                isUser = false, 
-                content = finalAiContent,
-                thoughtProcess = finalAiThought
-            ))
-            
+            // Persistir respuesta final en Room
+            val finalState = _chatMessages.value.last()
+            chatDao.insertMessage(
+                ChatMessageEntity(
+                    sessionId      = currentSessionId,
+                    isUser         = false,
+                    content        = finalState.content,
+                    thoughtProcess = finalState.thoughtProcess
+                )
+            )
+
             _isGenerating.value = false
         }
     }
 
-    fun startNewSession() {
-        _chatMessages.value = emptyList()
-        currentSessionId = 0L
-        if (currentHandle != 0L) {
-            engine.trimMemory(currentHandle)
+    // =====================================================================
+    // HISTORIAL DE CONTEXTO
+    // =====================================================================
+
+    private fun buildHistoryPrefix(): String {
+        return buildString {
+            _chatMessages.value.dropLast(1).forEach { msg ->
+                when {
+                    msg.isUser -> {
+                        append("<start_of_turn>user\n${msg.content}<end_of_turn>\n")
+                    }
+                    // FIX 4: excluir todos los mensajes de sistema del contexto
+                    msg.content.isNotBlank()
+                        && !msg.content.startsWith("✅")
+                        && !msg.content.startsWith("📎")
+                        && !msg.content.startsWith("❌")
+                        && !msg.content.startsWith("🌐") -> {
+                        append("<start_of_turn>model\n${msg.content}<end_of_turn>\n")
+                    }
+                }
+            }
         }
+    }
+
+    // =====================================================================
+    // GESTIÓN DE SESIONES
+    // =====================================================================
+
+    fun startNewSession() {
+        _chatMessages.value    = emptyList()
+        currentSessionId       = 0L
+        _generationStats.value = GenerationStats()
+        if (currentHandle != 0L) engine.trimMemory(currentHandle)
     }
 
     fun loadSession(sessionId: Long) {
         viewModelScope.launch(Dispatchers.IO) {
-            currentSessionId = sessionId
+            currentSessionId       = sessionId
+            _generationStats.value = GenerationStats()
             val dbMessages = chatDao.getMessagesForSession(sessionId)
-            
             _chatMessages.value = dbMessages.map {
                 ChatMessage(
-                    isUser = it.isUser, 
-                    content = it.content, 
-                    thoughtProcess = it.thoughtProcess, 
-                    isThinking = false
+                    isUser         = it.isUser,
+                    content        = it.content,
+                    thoughtProcess = it.thoughtProcess,
+                    isThinking     = false
                 )
             }
-            
             if (currentHandle != 0L) engine.trimMemory(currentHandle)
         }
     }
 
-    fun clearSession() {
-        startNewSession()
-    }
-    
     override fun onCleared() {
         super.onCleared()
         if (currentHandle != 0L) engine.deinitEngine(currentHandle)
-        if (embedHandle != 0L) engine.deinitEngine(embedHandle)
     }
 }
 
+// =====================================================================
+// FACTORY
+// =====================================================================
+
 class ModulaViewModelFactory(
     private val chatDao: ChatDao,
-    private val vectorDao: VectorDao
+    private val documentDao: DocumentDao
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(ModulaViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return ModulaViewModel(chatDao, vectorDao) as T
+            return ModulaViewModel(chatDao, documentDao) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

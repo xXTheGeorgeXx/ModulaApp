@@ -9,48 +9,74 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
-
-// Imports
 import com.modulaappr1.data.AppDatabase
+import com.modulaappr1.ui.screens.HomeScreen
 import com.modulaappr1.ui.screens.ModelForgeScreen
 import com.modulaappr1.ui.screens.NeuralQuartzApp
+import com.modulaappr1.ui.screens.DocumentsScreen
+import com.modulaappr1.ui.screens.SettingsScreen
 import com.modulaappr1.ui.theme.ObsidianBlack
 import com.modulaappr1.viewmodel.ModulaViewModel
 import com.modulaappr1.viewmodel.ModulaViewModelFactory
 
+// Destinos de navegación de la app
+sealed class Screen {
+    object Home        : Screen()
+    object Chat        : Screen()
+    object Documents   : Screen()
+    object ModelForge  : Screen()
+    object Settings    : Screen()
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        setContent {
-            // 1. Inicializamos la Base de Datos Completa (Room)
-            val database = AppDatabase.getDatabase(applicationContext)
-            val chatDao = database.chatDao()
-            val vectorDao = database.vectorDao() // <-- AÑADIDO: El DAO para el Bibliotecario
 
-            // 2. Instanciamos el Cerebro (ViewModel) pasándole la base de datos entera
-            val modulaViewModel: ModulaViewModel = viewModel(
-                factory = ModulaViewModelFactory(chatDao, vectorDao) // <-- AÑADIDO: Pasamos ambos DAOs
+        setContent {
+            // 1. Base de datos — documentDao reemplaza a vectorDao
+            val database    = AppDatabase.getDatabase(applicationContext)
+            val chatDao     = database.chatDao()
+            val documentDao = database.documentDao()  // ← antes era vectorDao()
+
+            // 2. ViewModel con la nueva factory
+            val viewModel: ModulaViewModel = viewModel(
+                factory = ModulaViewModelFactory(chatDao, documentDao)
             )
 
-            // 3. Un estado simple para navegar entre la Configuración y el Chat
-            var isChatActive by remember { mutableStateOf(false) }
+            // 3. Navegación centralizada con sealed class
+            var currentScreen by remember { mutableStateOf<Screen>(Screen.Home) }
 
             MaterialTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = ObsidianBlack // Fondo Cyberpunk base
+                    color    = ObsidianBlack
                 ) {
-                    // ENRUTADOR SIMPLE
-                    if (isChatActive) {
-                        NeuralQuartzApp( // Contenedor con menú lateral y chat
-                            viewModel = modulaViewModel,
-                            onBackToForge = { isChatActive = false }
+                    when (currentScreen) {
+
+                        Screen.Home -> HomeScreen(
+                            viewModel     = viewModel,
+                            onNavigate    = { currentScreen = it }
                         )
-                    } else {
-                        ModelForgeScreen( // Pantalla de configuración y carga
-                            viewModel = modulaViewModel,
-                            onNavigateToChat = { isChatActive = true }
+
+                        Screen.Chat -> NeuralQuartzApp(
+                            viewModel     = viewModel,
+                            onBackToForge = { currentScreen = Screen.Home }
+                        )
+
+                        Screen.Documents -> DocumentsScreen(
+                            viewModel = viewModel,
+                            onBack    = { currentScreen = Screen.Home }
+                        )
+
+                        Screen.ModelForge -> ModelForgeScreen(
+                            viewModel         = viewModel,
+                            onNavigateToChat  = { currentScreen = Screen.Chat },
+                            onBack            = { currentScreen = Screen.Home }
+                        )
+
+                        Screen.Settings -> SettingsScreen(
+                            viewModel = viewModel,
+                            onBack    = { currentScreen = Screen.Home }
                         )
                     }
                 }
