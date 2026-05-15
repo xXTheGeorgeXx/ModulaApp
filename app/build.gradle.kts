@@ -69,11 +69,11 @@ dependencies {
     val markwon_version = "4.6.2"
     implementation("io.noties.markwon:core:$markwon_version")
     implementation("io.noties.markwon:syntax-highlight:$markwon_version") 
-    implementation("io.noties.markwon:ext-tables:$markwon_version") */
+    implementation("io.noties.markwon:ext-tables:$markwon_version")
     
     // Prism4j (El motor de coloreado de código y su generador)
     implementation("io.noties:prism4j:2.0.0")          
-    kapt("io.noties:prism4j-bundler:2.0.0")            
+    kapt("io.noties:prism4j-bundler:2.0.0") */            
   
     // BASE DE DATOS VECTORIAL (RAG)
     val room_version = "2.6.1"

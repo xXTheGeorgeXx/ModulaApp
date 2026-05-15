@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.sp
 import com.modulaappr1.ui.theme.*
 import com.modulaappr1.viewmodel.EngineState
 import com.modulaappr1.viewmodel.ModulaViewModel
+import com.modulaappr1.Screen
 
 data class HomeMenuItem(
     val icon: String,
