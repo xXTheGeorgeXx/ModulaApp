@@ -5,6 +5,7 @@ import com.modulaappr1.data.DocumentChunk
 // =====================================================================
 // TF-IDF con BM25-lite — Retrieval sin modelo de embeddings
 // =====================================================================
+
 object TfIdf {
 
     private val STOPWORDS = setOf(
@@ -24,17 +25,16 @@ object TfIdf {
             .filter { it.length > 2 && it !in STOPWORDS }
     }
 
-    // BM25-lite: mejor que Jaccard puro para textos académicos
     fun score(queryTokens: List<String>, chunk: String): Float {
         if (queryTokens.isEmpty()) return 0f
         val chunkTokens = tokenize(chunk)
         if (chunkTokens.isEmpty()) return 0f
 
-        val freq = chunkTokens.groupingBy { it }.eachCount()
+        val freq     = chunkTokens.groupingBy { it }.eachCount()
         val chunkLen = chunkTokens.size.toFloat()
-        val k1 = 1.5f
-        val b = 0.75f
-        val avgLen = 90f // Longitud media estimada de nuestros chunks
+        val k1       = 1.5f
+        val b        = 0.75f
+        val avgLen   = 90f
 
         return queryTokens.sumOf { term ->
             val tf = freq.getOrDefault(term, 0)
@@ -46,11 +46,15 @@ object TfIdf {
 }
 
 // =====================================================================
-// RAGEngine — Núcleo del sistema aumentado
+// RAGEngine — Una sola clase, todo integrado
 // =====================================================================
+
 class RAGEngine {
 
     private val wikipediaAgent = WikipediaAgent()
+    private val arxivAgent     = ArXivAgent()
+
+    // ── RECUPERACIÓN LOCAL ────────────────────────────────────────────
 
     fun findRelevantChunks(
         query: String,
@@ -63,12 +67,29 @@ class RAGEngine {
         if (queryTokens.isEmpty()) return emptyList()
 
         return allChunks
-            .map { chunk -> chunk to TfIdf.score(queryTokens, chunk.textContent) }
+            .map  { chunk -> chunk to TfIdf.score(queryTokens, chunk.textContent) }
             .filter { (_, score) -> score >= minScore }
             .sortedByDescending { (_, score) -> score }
             .take(topN)
             .map { (chunk, _) -> chunk }
     }
+
+    // ── DETECCIÓN DE QUERY ACADÉMICA ──────────────────────────────────
+
+    private fun isAcademicQuery(query: String): Boolean {
+        val keywords = setOf(
+            "paper", "estudio", "investigación", "física", "química",
+            "biología", "matemáticas", "algoritmo", "teorema", "ecuación",
+            "experimento", "hipótesis", "científico", "universidad",
+            "publicación", "journal", "arxiv", "quantum", "neural",
+            "machine learning", "deep learning", "proteína", "genoma",
+            "relatividad", "termodinámica", "mecánica", "óptica"
+        )
+        val lower = query.lowercase()
+        return keywords.any { lower.contains(it) }
+    }
+
+    // ── CONSTRUCCIÓN DEL PROMPT AGÉNTICO ─────────────────────────────
 
     suspend fun buildAgenticPrompt(
         userInput: String,
@@ -81,41 +102,49 @@ class RAGEngine {
 
         var retrievedContext = ""
 
-        // FASE 1: RAG local con TF-IDF (siempre disponible, sin segundo modelo)
+        // FASE 1: RAG local — siempre, sin red, sin segundo modelo
         val relevantChunks = findRelevantChunks(userInput, allChunks)
         if (relevantChunks.isNotEmpty()) {
             retrievedContext = "📚 DOCUMENTOS LOCALES:\n" +
                 relevantChunks.joinToString("\n---\n") { it.textContent }
         }
 
-        // FASE 2: Wikipedia (solo si activado + hay internet)
-        if (useWikipedia && networkAvailable) {
-            // Buscar si el contexto local es insuficiente
-            if (relevantChunks.size < 2) {
-                val wikiResult = wikipediaAgent.search(userInput)
-                if (wikiResult.isNotBlank()) {
+        // FASE 2: Fuentes online — solo si el usuario lo activó y hay red
+        if (useWikipedia && networkAvailable && relevantChunks.size < 2) {
+
+            // Wikipedia — conocimiento general
+            val wikiResult = wikipediaAgent.search(userInput)
+            if (wikiResult.isNotBlank()) {
+                retrievedContext = if (retrievedContext.isBlank()) {
+                    "🌐 WIKIPEDIA:\n$wikiResult"
+                } else {
+                    "$retrievedContext\n\n🌐 WIKIPEDIA:\n$wikiResult"
+                }
+            }
+
+            // ArXiv — solo para queries con intención académica/científica
+            if (isAcademicQuery(userInput)) {
+                val arxivResult = arxivAgent.search(userInput)
+                if (arxivResult.isNotBlank()) {
                     retrievedContext = if (retrievedContext.isBlank()) {
-                        "🌐 FUENTE WIKIPEDIA:\n$wikiResult"
+                        "🔬 PAPERS (ArXiv):\n$arxivResult"
                     } else {
-                        "$retrievedContext\n\n🌐 COMPLEMENTO WIKIPEDIA:\n$wikiResult"
+                        "$retrievedContext\n\n🔬 PAPERS (ArXiv):\n$arxivResult"
                     }
                 }
             }
         }
 
         // FASE 3: Ensamblaje del prompt final
-        val systemBlock = if (systemPrompt.isNotBlank()) {
+        val systemBlock  = if (systemPrompt.isNotBlank())
             "<start_of_turn>system\n${systemPrompt.trim()}<end_of_turn>\n"
-        } else ""
-
+            else ""
         val reasoningTag = if (useReasoning) "<|channel>thought\n" else ""
 
         return if (retrievedContext.isBlank()) {
-            // Conversación simple sin contexto adicional
             "${systemBlock}<start_of_turn>user\n$userInput<end_of_turn>\n" +
             "<start_of_turn>model\n$reasoningTag"
         } else {
-            // Conversación aumentada con documentos y/o Wikipedia
             "${systemBlock}<start_of_turn>user\n" +
             "Utiliza el siguiente contexto para responder con precisión.\n" +
             "Si la respuesta no está en el contexto, usa tu conocimiento general.\n\n" +

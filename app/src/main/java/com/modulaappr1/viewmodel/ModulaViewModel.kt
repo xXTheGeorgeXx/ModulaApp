@@ -68,11 +68,18 @@ class ModulaViewModel(
         private set
 
     private var activeModelFile: File? = null
+    
 
     // ── ESTADOS ───────────────────────────────────────────────────────
 
     private val _generationStats  = MutableStateFlow(GenerationStats())
     val generationStats: StateFlow<GenerationStats> = _generationStats.asStateFlow()
+    
+    // Añadir junto a los otros estados:
+    private val _cpuThreads = MutableStateFlow(3f)
+    val cpuThreads: StateFlow<Float> = _cpuThreads.asStateFlow()
+    
+    fun updateCpuThreads(v: Float) { _cpuThreads.value = v }
 
     private val _engineState      = MutableStateFlow(EngineState.IDLE)
     val engineState: StateFlow<EngineState> = _engineState.asStateFlow()
@@ -97,9 +104,9 @@ class ModulaViewModel(
 
     private val _temperature      = MutableStateFlow(0.7f)
     val temperature: StateFlow<Float> = _temperature.asStateFlow()
-
-    private val _gpuLayers        = MutableStateFlow(0f)
-    val gpuLayers: StateFlow<Float> = _gpuLayers.asStateFlow()
+    
+    //private val _gpuLayers        = MutableStateFlow(0f)
+    //val gpuLayers: StateFlow<Float> = _gpuLayers.asStateFlow()
 
     private val _isGenerating     = MutableStateFlow(false)
     val isGenerating: StateFlow<Boolean> = _isGenerating.asStateFlow()
@@ -126,7 +133,7 @@ class ModulaViewModel(
 
     fun updateContextSize(v: Float)   { _contextSize.value = v }
     fun updateTemperature(v: Float)   { _temperature.value = v }
-    fun updateGpuLayers(v: Float)     { _gpuLayers.value = v }
+    //fun updateGpuLayers(v: Float)     { _gpuLayers.value = v }
     fun updateSystemPrompt(v: String) { _systemPrompt.value = v }
     fun toggleWikipedia(v: Boolean)   { useWikipedia.value = v }
     fun toggleReasoning(v: Boolean)   { useReasoning.value = v }
@@ -195,13 +202,15 @@ class ModulaViewModel(
             actManager.getMemoryInfo(memInfo)
             val ramGB = memInfo.totalMem / (1024f * 1024f * 1024f)
             _deviceRamGB.value = ramGB
-            if (ramGB >= 11.5f) {
-                _gpuLayers.value       = layers.toFloat()
-                _hardwareMessage.value = "Hardware High-End — Aceleración GPU habilitada."
-            } else {
-                _gpuLayers.value       = 0f
-                _hardwareMessage.value = "Hardware Gama Media — Optimizado para CPU."
-            }
+            
+            _hardwareMessage.value = "Motor Agnóstico detectado — Optimizado para CPU."
+            //if (ramGB >= 11.5f) {
+                //_gpuLayers.value       = layers.toFloat()
+                //_hardwareMessage.value = "Hardware High-End — Aceleración GPU habilitada."
+            //} else {
+                //_gpuLayers.value       = 0f
+                //_hardwareMessage.value = "Hardware Gama Media — Optimizado para CPU."
+            //}
             _statusMessage.value = _hardwareMessage.value
             _engineState.value   = EngineState.MODEL_SELECTED
         }
@@ -253,20 +262,30 @@ class ModulaViewModel(
 
     fun forgeEngine(context: Context) {
         val file = activeModelFile ?: return
+        
         _engineState.value   = EngineState.LOADING
         _statusMessage.value = "Inicializando motor..."
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val t0        = System.currentTimeMillis()
-                val cores     = Runtime.getRuntime().availableProcessors()
-                val goldCores = if (cores >= 8) 3 else maxOf(1, cores / 2)
+                val t0 = System.currentTimeMillis()
+
+                // Usar los threads configurados por el usuario
+                // con fallback inteligente si es 0
+                val requestedThreads = _cpuThreads.value.toInt()
+                val totalCores       = Runtime.getRuntime().availableProcessors()
+                
+                val threads = if (requestedThreads > 0) {
+                    requestedThreads.coerceIn(1, totalCores)
+                } else {
+                    if (totalCores >= 8) 3 else maxOf(1, totalCores / 2)
+                }
 
                 currentHandle = engine.initEngine(
                     modelPath = file.absolutePath,
-                    gpuLayers = _gpuLayers.value.toInt(),
+                    gpuLayers = 0,                          // CPU siempre
                     ctxSize   = _contextSize.value.toInt(),
-                    threads   = goldCores
+                    threads   = threads
                 )
 
                 val elapsed  = (System.currentTimeMillis() - t0) / 1000.0
@@ -276,16 +295,12 @@ class ModulaViewModel(
                     val ragStatus = if (docCount > 0) "+ RAG ($docCount docs)" else "(sin docs)"
                     _engineState.value   = EngineState.READY
                     _statusMessage.value =
-                        "Online $ragStatus — ${String.format(Locale.US, "%.1f", elapsed)}s"
+                        "Online $ragStatus — ${String.format(Locale.US, "%.1f", elapsed)}s " +
+                        "· $threads núcleos"
 
-                    // FIX 1: Iniciar ForegroundService para mantener el modelo
-                    // vivo cuando el usuario abre el explorador de archivos
-                    val serviceIntent = Intent(
-                        context,
-                        ModulaEngineService::class.java
+                    context.startForegroundService(
+                        Intent(context, ModulaEngineService::class.java)
                     )
-                    context.startForegroundService(serviceIntent)
-
                 } else {
                     _engineState.value   = EngineState.ERROR
                     _statusMessage.value = "Error al inicializar el motor."

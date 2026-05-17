@@ -36,11 +36,11 @@ fun SettingsScreen(
     val systemPrompt by viewModel.systemPrompt.collectAsState()
     val ctxSize      by viewModel.contextSize.collectAsState()
     val temperature  by viewModel.temperature.collectAsState()
-    val gpuLayers    by viewModel.gpuLayers.collectAsState()
-    val layers       by viewModel.scannedLayers.collectAsState()
     val useWikipedia by viewModel.useWikipedia.collectAsState()
     val useReasoning by viewModel.useReasoning.collectAsState()
+    val cpuThreads   by viewModel.cpuThreads.collectAsState()
     val isReady      = engineState == EngineState.READY
+    val totalCores   = Runtime.getRuntime().availableProcessors()
 
     BackHandler { onBack() }
 
@@ -63,29 +63,29 @@ fun SettingsScreen(
             Column {
                 Text(
                     "Configuración",
-                    color = TextPrimary,
+                    color      = TextPrimary,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 20.sp
+                    fontSize   = 20.sp
                 )
                 Text(
                     "Ajustes del modelo y comportamiento",
-                    color = TextSecondary,
+                    color    = TextSecondary,
                     fontSize = 12.sp
                 )
             }
         }
 
         LazyColumn(
-            contentPadding = PaddingValues(16.dp),
+            contentPadding      = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
 
-            // ── SECCIÓN: SYSTEM PROMPT ─────────────────────────
+            // ── SYSTEM PROMPT ──────────────────────────────────────
             item {
                 SettingsSection(
-                    icon  = "🎯",
-                    title = "System Prompt",
-                    badge = if (systemPrompt.isNotBlank()) "Activo" else "Vacío",
+                    icon       = "🎯",
+                    title      = "System Prompt",
+                    badge      = if (systemPrompt.isNotBlank()) "Activo" else "Vacío",
                     badgeColor = if (systemPrompt.isNotBlank()) CyanNeon else Color.Gray
                 ) {
                     Text(
@@ -105,7 +105,7 @@ fun SettingsScreen(
                         placeholder   = {
                             Text(
                                 "Ej: Eres un tutor de física para estudiantes de secundaria. " +
-                                "Explica siempre con ejemplos simples y analogías del mundo real.",
+                                "Explica siempre con ejemplos simples.",
                                 color    = TextSecondary.copy(alpha = 0.5f),
                                 fontSize = 12.sp
                             )
@@ -120,16 +120,23 @@ fun SettingsScreen(
                         shape = RoundedCornerShape(10.dp)
                     )
 
-                    // Presets de system prompts educativos
                     Spacer(modifier = Modifier.height(10.dp))
                     Text("Presets educativos:", color = TextSecondary, fontSize = 11.sp)
                     Spacer(modifier = Modifier.height(6.dp))
 
                     val presets = listOf(
-                        "Tutor general"    to "Eres un tutor educativo amigable y paciente. Explica los conceptos paso a paso, usa ejemplos simples y anima al estudiante a reflexionar.",
-                        "Física y Matemáticas" to "Eres un tutor especializado en física y matemáticas. Muestra siempre el desarrollo paso a paso de cada problema y verifica las unidades.",
-                        "Historia y Geografía" to "Eres un tutor de ciencias sociales. Contextualiza los eventos históricamente, menciona causas y consecuencias, y relaciona con el presente.",
-                        "Programación" to "Eres un mentor de programación. Explica el código línea por línea, sugiere buenas prácticas y proporciona ejemplos ejecutables.",
+                        "Tutor general" to
+                            "Eres un tutor educativo amigable y paciente. Explica los conceptos " +
+                            "paso a paso, usa ejemplos simples y anima al estudiante a reflexionar.",
+                        "Física y Matemáticas" to
+                            "Eres un tutor especializado en física y matemáticas. Muestra siempre " +
+                            "el desarrollo paso a paso de cada problema y verifica las unidades.",
+                        "Historia y Geografía" to
+                            "Eres un tutor de ciencias sociales. Contextualiza los eventos " +
+                            "históricamente, menciona causas y consecuencias, y relaciona con el presente.",
+                        "Programación" to
+                            "Eres un mentor de programación. Explica el código línea por línea, " +
+                            "sugiere buenas prácticas y proporciona ejemplos ejecutables.",
                         "Sin rol (respuestas directas)" to ""
                     )
 
@@ -141,13 +148,11 @@ fun SettingsScreen(
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(
-                                        if (isActive) CyanNeon.copy(alpha = 0.1f)
-                                        else SurfaceDark
+                                        if (isActive) CyanNeon.copy(alpha = 0.1f) else SurfaceDark
                                     )
                                     .border(
                                         1.dp,
-                                        if (isActive) CyanNeon.copy(alpha = 0.4f)
-                                        else SurfaceVariant,
+                                        if (isActive) CyanNeon.copy(alpha = 0.4f) else SurfaceVariant,
                                         RoundedCornerShape(8.dp)
                                     )
                                     .clickable { viewModel.updateSystemPrompt(prompt) }
@@ -173,12 +178,12 @@ fun SettingsScreen(
                 }
             }
 
-            // ── SECCIÓN: PARÁMETROS DEL MODELO ────────────────
+            // ── PARÁMETROS DEL MODELO ──────────────────────────────
             item {
                 SettingsSection(
-                    icon  = "⚙️",
-                    title = "Parámetros del modelo",
-                    badge = if (isReady) "Modelo activo" else "Sin modelo",
+                    icon       = "⚙️",
+                    title      = "Parámetros del modelo",
+                    badge      = if (isReady) "Modelo activo" else "Sin modelo",
                     badgeColor = if (isReady) CyanNeon else Color.Gray
                 ) {
                     if (!isReady) {
@@ -188,64 +193,67 @@ fun SettingsScreen(
                             fontSize = 12.sp
                         )
                     } else {
-                        // Context size
+
+                        // Ventana de contexto
                         SettingsSlider(
-                            title    = "Ventana de Contexto",
-                            subtitle = "Tokens que el modelo puede recordar en una sesión",
-                            value    = ctxSize,
-                            range    = 1024f..16384f,
-                            steps    = 14,
-                            display  = "${ctxSize.toInt()} ctx",
-                            warning  = if (ctxSize > 8192f)
-                                "Contexto alto consume más RAM" else "",
+                            title         = "Ventana de Contexto",
+                            subtitle      = "Tokens que el modelo puede recordar en una sesión",
+                            value         = ctxSize,
+                            range         = 1024f..16384f,
+                            steps         = 14,
+                            display       = "${ctxSize.toInt()} ctx",
+                            warning       = if (ctxSize > 8192f) "Contexto alto consume más RAM" else "",
                             onValueChange = { viewModel.updateContextSize(it) }
                         )
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        // Temperature
+                        // Temperatura
                         SettingsSlider(
-                            title    = "Temperatura",
-                            subtitle = "Creatividad vs precisión de las respuestas",
-                            value    = temperature,
-                            range    = 0.1f..1.5f,
-                            steps    = 13,
-                            display  = String.format(Locale.US, "%.2f", temperature),
-                            warning  = when {
+                            title         = "Temperatura",
+                            subtitle      = "Creatividad vs precisión de las respuestas",
+                            value         = temperature,
+                            range         = 0.1f..1.5f,
+                            steps         = 13,
+                            display       = String.format(Locale.US, "%.2f", temperature),
+                            warning       = when {
                                 temperature < 0.3f -> "Muy baja → respuestas repetitivas"
                                 temperature > 1.1f -> "Muy alta → respuestas impredecibles"
-                                else -> ""
+                                else               -> ""
                             },
                             onValueChange = { viewModel.updateTemperature(it) }
                         )
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        // GPU layers
-                        val maxLayers = if (layers > 0) layers else 35
+                        // Núcleos CPU — reemplaza el slider de GPU
                         SettingsSlider(
-                            title    = "Capas en GPU",
-                            subtitle = "0 = CPU pura. Aumenta si tu dispositivo tiene GPU dedicada",
-                            value    = gpuLayers,
-                            range    = 0f..maxLayers.toFloat(),
-                            steps    = if (maxLayers > 1) maxLayers - 1 else 0,
-                            display  = "${gpuLayers.toInt()} / $maxLayers",
-                            warning  = if (gpuLayers > 0f)
-                                "Requiere reiniciar el motor para aplicar" else "",
-                            onValueChange = { viewModel.updateGpuLayers(it) }
+                            title    = "Núcleos CPU",
+                            subtitle = "Gold cores recomendados: 3 de $totalCores disponibles",
+                            value    = cpuThreads,
+                            range    = 1f..totalCores.toFloat(),
+                            steps    = if (totalCores > 2) totalCores - 2 else 0,
+                            display  = "${cpuThreads.toInt()} / $totalCores núcleos",
+                            warning  = when {
+                                cpuThreads.toInt() >= totalCores ->
+                                    "Usar todos los cores puede calentar el dispositivo"
+                                cpuThreads.toInt() < 2 ->
+                                    "Con 1 núcleo la generación será muy lenta"
+                                else -> ""
+                            },
+                            onValueChange = { viewModel.updateCpuThreads(it) }
                         )
                     }
                 }
             }
 
-            // ── SECCIÓN: COMPORTAMIENTO ────────────────────────
+            // ── COMPORTAMIENTO ─────────────────────────────────────
             item {
                 SettingsSection(
                     icon  = "🧠",
                     title = "Comportamiento",
                     badge = null
                 ) {
-                    // Toggle razonamiento
                     SettingsToggleRow(
                         icon     = "🧠",
                         title    = "Razonamiento extendido",
@@ -257,32 +265,32 @@ fun SettingsScreen(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // Toggle Wikipedia
                     SettingsToggleRow(
                         icon     = "🌐",
-                        title    = "Búsqueda en Wikipedia",
-                        subtitle = "Complementa las respuestas con información de Wikipedia " +
-                                   "cuando hay conexión a internet.",
+                        title    = "Búsqueda en Wikipedia + ArXiv",
+                        subtitle = "Complementa las respuestas con Wikipedia y papers " +
+                                   "científicos cuando hay conexión a internet.",
                         checked  = useWikipedia,
                         onToggle = { viewModel.toggleWikipedia(it) }
                     )
                 }
             }
 
-            // ── SECCIÓN: ACERCA DE ─────────────────────────────
+            // ── ACERCA DE ──────────────────────────────────────────
             item {
                 SettingsSection(
                     icon  = "ℹ️",
                     title = "Acerca de Modula",
                     badge = null
                 ) {
-                    AboutRow("Versión",        "1.0.0-beta")
-                    AboutRow("Motor",          "llama.cpp · JNI")
-                    AboutRow("Modelos",        "Gemma 4 · Unsloth GGUF")
-                    AboutRow("RAG",            "TF-IDF BM25-lite · Sin embeddings")
-                    AboutRow("Privacidad",     "100% offline · Sin telemetría")
-                    AboutRow("Licencia",       "Apache 2.0")
-                    AboutRow("Competencia",    "Gemma 4 Good Hackathon · Kaggle 2026")
+                    AboutRow("Versión",     "1.0.0-beta")
+                    AboutRow("Motor",       "llama.cpp · JNI · CPU pura")
+                    AboutRow("Modelos",     "Gemma 4 · Unsloth GGUF")
+                    AboutRow("RAG",         "TF-IDF BM25-lite · Sin embeddings")
+                    AboutRow("Fuentes",     "Wikipedia · ArXiv")
+                    AboutRow("Privacidad",  "100% offline · Sin telemetría")
+                    AboutRow("Licencia",    "Apache 2.0")
+                    AboutRow("Hackathon",   "Gemma 4 Good · Kaggle 2026")
 
                     Spacer(modifier = Modifier.height(10.dp))
 
@@ -298,8 +306,8 @@ fun SettingsScreen(
                             "Modula es una app de IA local diseñada para estudiantes " +
                             "en zonas con conectividad limitada. Todo el procesamiento " +
                             "ocurre en el dispositivo. Tus datos nunca salen de tu teléfono.",
-                            color    = TextSecondary,
-                            fontSize = 12.sp,
+                            color      = TextSecondary,
+                            fontSize   = 12.sp,
                             lineHeight = 18.sp
                         )
                     }
@@ -332,7 +340,6 @@ fun SettingsSection(
             .background(SurfaceDark)
             .border(1.dp, SurfaceVariant, RoundedCornerShape(14.dp))
     ) {
-        // Cabecera de sección — toque para colapsar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -358,16 +365,21 @@ fun SettingsSection(
                             .background(badgeColor.copy(alpha = 0.12f))
                             .padding(horizontal = 7.dp, vertical = 2.dp)
                     ) {
-                        Text(badge, color = badgeColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            badge,
+                            color      = badgeColor,
+                            fontSize   = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }
             Icon(
-                imageVector = if (expanded) Icons.Default.KeyboardArrowUp
-                              else          Icons.Default.KeyboardArrowDown,
+                imageVector        = if (expanded) Icons.Default.KeyboardArrowUp
+                                     else          Icons.Default.KeyboardArrowDown,
                 contentDescription = null,
-                tint     = TextSecondary,
-                modifier = Modifier.size(20.dp)
+                tint               = TextSecondary,
+                modifier           = Modifier.size(20.dp)
             )
         }
 
@@ -377,12 +389,8 @@ fun SettingsSection(
             exit    = shrinkVertically() + fadeOut()
         ) {
             Column(
-                modifier = Modifier.padding(
-                    start  = 16.dp,
-                    end    = 16.dp,
-                    bottom = 16.dp
-                ),
-                content = content
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                content  = content
             )
         }
     }
@@ -426,8 +434,7 @@ fun SettingsSlider(
                 thumbColor         = CyanNeon,
                 activeTrackColor   = CyanNeon,
                 inactiveTrackColor = SurfaceVariant
-            ),
-            modifier = Modifier.padding(vertical = 0.dp)
+            )
         )
         if (warning.isNotBlank()) {
             Text(
@@ -459,18 +466,8 @@ fun SettingsToggleRow(
         Text(icon, fontSize = 20.sp)
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                title,
-                color      = TextPrimary,
-                fontWeight = FontWeight.Medium,
-                fontSize   = 14.sp
-            )
-            Text(
-                subtitle,
-                color      = TextSecondary,
-                fontSize   = 11.sp,
-                lineHeight = 14.sp
-            )
+            Text(title, color = TextPrimary, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+            Text(subtitle, color = TextSecondary, fontSize = 11.sp, lineHeight = 14.sp)
         }
         Spacer(modifier = Modifier.width(8.dp))
         Switch(
@@ -489,7 +486,7 @@ fun SettingsToggleRow(
 @Composable
 fun AboutRow(label: String, value: String) {
     Row(
-        modifier = Modifier
+        modifier              = Modifier
             .fillMaxWidth()
             .padding(vertical = 5.dp),
         horizontalArrangement = Arrangement.SpaceBetween

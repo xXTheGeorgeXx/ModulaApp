@@ -10,7 +10,7 @@ import android.os.IBinder
 class ModulaEngineService : Service() {
 
     companion object {
-        const val CHANNEL_ID    = "modula_engine_channel"
+        const val CHANNEL_ID      = "modula_engine_channel"
         const val NOTIFICATION_ID = 1001
     }
 
@@ -28,7 +28,6 @@ class ModulaEngineService : Service() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        // No detener cuando el usuario swipea la app
     }
 
     private fun buildNotification(): Notification {
@@ -37,7 +36,6 @@ class ModulaEngineService : Service() {
             .setContentText("Modelo activo en segundo plano")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setOngoing(true)
-            .setSilent(true)
             .build()
     }
 

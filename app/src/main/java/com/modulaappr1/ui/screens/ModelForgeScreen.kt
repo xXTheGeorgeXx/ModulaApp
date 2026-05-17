@@ -46,47 +46,46 @@ import java.util.Locale
 // =====================================================================
 
 data class QuantOption(
-    val label: String,           // "IQ4_NL · Recomendado"
-    val sizeLabel: String,       // "1.9 GB"
-    val ramReq: String,          // "4 GB RAM mín."
-    val fileName: String,        // nombre del .gguf en disco
+    val label: String,
+    val sizeLabel: String,
+    val ramReq: String,
+    val fileName: String,
     val downloadUrl: String,
     val isRecommended: Boolean = false,
-    val note: String = ""        // nota extra opcional
+    val note: String = ""
 )
 
 data class ModelFamily(
-    val familyName: String,      // "Gemma 4 E2B"
-    val tagline: String,         // "Edge · Móvil · 128K ctx"
+    val familyName: String,
+    val tagline: String,
     val description: String,
     val badgeColor: Color,
     val quants: List<QuantOption>
 )
 
 // =====================================================================
-// CATÁLOGO DE MODELOS — Solo Unsloth HuggingFace, sin nomic-embed
+// CATÁLOGO
 // =====================================================================
 
 private val BASE_E2B = "https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main"
 private val BASE_E4B = "https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF/resolve/main"
 
 private val MODEL_CATALOG = listOf(
-
     ModelFamily(
         familyName  = "Gemma 4 E2B",
         tagline     = "Edge · Móvil · 128K contexto",
         description = "Diseñado para dispositivos móviles y hardware de gama media. " +
-                      "Soporta texto, imagen y audio. El punto dulce para el Galaxy A52.",
+                      "El punto dulce para el Galaxy A52.",
         badgeColor  = Color(0xFF00E5C3),
-        quants = listOf(
+        quants      = listOf(
             QuantOption(
-                label       = "IQ4_NL",
-                sizeLabel   = "~1.9 GB",
-                ramReq      = "4 GB RAM",
-                fileName    = "gemma-4-E2B-it-IQ4_NL.gguf",
-                downloadUrl = "$BASE_E2B/gemma-4-E2B-it-IQ4_NL.gguf",
+                label         = "IQ4_NL",
+                sizeLabel     = "~1.9 GB",
+                ramReq        = "4 GB RAM",
+                fileName      = "gemma-4-E2B-it-IQ4_NL.gguf",
+                downloadUrl   = "$BASE_E2B/gemma-4-E2B-it-IQ4_NL.gguf",
                 isRecommended = true,
-                note        = "Mejor balance calidad/velocidad en móvil"
+                note          = "Mejor balance calidad/velocidad en móvil"
             ),
             QuantOption(
                 label       = "Q4_K_M",
@@ -94,7 +93,7 @@ private val MODEL_CATALOG = listOf(
                 ramReq      = "4 GB RAM",
                 fileName    = "gemma-4-E2B-it-Q4_K_M.gguf",
                 downloadUrl = "$BASE_E2B/gemma-4-E2B-it-Q4_K_M.gguf",
-                note        = "Muy similar a IQ4_NL, ligeramente más rápido"
+                note        = "Ligeramente más rápido que IQ4_NL"
             ),
             QuantOption(
                 label       = "Q5_K_M",
@@ -102,7 +101,7 @@ private val MODEL_CATALOG = listOf(
                 ramReq      = "5 GB RAM",
                 fileName    = "gemma-4-E2B-it-Q5_K_M.gguf",
                 downloadUrl = "$BASE_E2B/gemma-4-E2B-it-Q5_K_M.gguf",
-                note        = "Mayor calidad, especialmente en matemáticas"
+                note        = "Mayor calidad en matemáticas y física"
             ),
             QuantOption(
                 label       = "Q8_0",
@@ -110,26 +109,25 @@ private val MODEL_CATALOG = listOf(
                 ramReq      = "6 GB RAM",
                 fileName    = "gemma-4-E2B-it-Q8_0.gguf",
                 downloadUrl = "$BASE_E2B/gemma-4-E2B-it-Q8_0.gguf",
-                note        = "Máxima calidad, solo si tienes suficiente RAM"
+                note        = "Máxima calidad — requiere RAM suficiente"
             )
         )
     ),
-
     ModelFamily(
         familyName  = "Gemma 4 E4B",
         tagline     = "Edge+ · Laptop · 128K contexto",
-        description = "Mayor capacidad analítica y de razonamiento que E2B. " +
+        description = "Mayor capacidad analítica que E2B. " +
                       "Ideal para tablets, laptops o teléfonos con 8+ GB de RAM.",
         badgeColor  = Color(0xFF7C4DFF),
-        quants = listOf(
+        quants      = listOf(
             QuantOption(
-                label       = "IQ4_XS",
-                sizeLabel   = "~2.6 GB",
-                ramReq      = "6 GB RAM",
-                fileName    = "gemma-4-E4B-it-IQ4_XS.gguf",
-                downloadUrl = "$BASE_E4B/gemma-4-E4B-it-IQ4_XS.gguf",
+                label         = "IQ4_XS",
+                sizeLabel     = "~2.6 GB",
+                ramReq        = "6 GB RAM",
+                fileName      = "gemma-4-E4B-it-IQ4_XS.gguf",
+                downloadUrl   = "$BASE_E4B/gemma-4-E4B-it-IQ4_XS.gguf",
                 isRecommended = true,
-                note        = "El mínimo recomendado para E4B"
+                note          = "Mínimo recomendado para E4B"
             ),
             QuantOption(
                 label       = "Q4_K_M",
@@ -153,7 +151,7 @@ private val MODEL_CATALOG = listOf(
                 ramReq      = "8 GB RAM",
                 fileName    = "gemma-4-E4B-it-Q8_0.gguf",
                 downloadUrl = "$BASE_E4B/gemma-4-E4B-it-Q8_0.gguf",
-                note        = "Máxima calidad — requiere hardware robusto"
+                note        = "Máxima calidad — hardware robusto"
             )
         )
     )
@@ -167,21 +165,18 @@ private val MODEL_CATALOG = listOf(
 fun ModelForgeScreen(
     viewModel: ModulaViewModel,
     onNavigateToChat: () -> Unit,
-    onBack: (() -> Unit)? = null   // null cuando es pantalla raíz
+    onBack: (() -> Unit)? = null
 ) {
     val context     = LocalContext.current
     val engineState by viewModel.engineState.collectAsState()
     val statusMsg   by viewModel.statusMessage.collectAsState()
     val layers      by viewModel.scannedLayers.collectAsState()
     val tensors     by viewModel.scannedTensors.collectAsState()
-    val ramGB       by viewModel.deviceRamGB.collectAsState()
     val ctxSize     by viewModel.contextSize.collectAsState()
     val temp        by viewModel.temperature.collectAsState()
-    val gpuLayers   by viewModel.gpuLayers.collectAsState()
 
     var selectedTab by remember { mutableStateOf(0) }
 
-    // Intercepta el botón físico de atrás
     BackHandler(enabled = onBack != null) { onBack?.invoke() }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -194,10 +189,10 @@ fun ModelForgeScreen(
             .background(ObsidianBlack)
             .padding(horizontal = 20.dp, vertical = 16.dp)
     ) {
-        // ── HEADER ─────────────────────────────────────────────────
+        // ── HEADER ────────────────────────────────────────────────
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(bottom = 4.dp)
+            modifier          = Modifier.padding(bottom = 4.dp)
         ) {
             if (onBack != null) {
                 IconButton(onClick = { onBack() }) {
@@ -205,24 +200,31 @@ fun ModelForgeScreen(
                 }
             }
             Column {
-                Text("Model Forge", color = TextPrimary, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-                Text("Inferencia local · Unsloth · HuggingFace", color = TextSecondary, fontSize = 12.sp)
+                Text(
+                    "Model Forge",
+                    color      = TextPrimary,
+                    fontSize   = 26.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "Inferencia local · Unsloth · HuggingFace",
+                    color    = TextSecondary,
+                    fontSize = 12.sp
+                )
             }
         }
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // ── CONTENIDO SEGÚN ESTADO ──────────────────────────────────
+        // ── CONTENIDO SEGÚN ESTADO ────────────────────────────────
         when (engineState) {
 
             EngineState.IDLE, EngineState.ERROR -> {
-                // Tabs
                 Row(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
                     TabButton("HuggingFace", selectedTab == 0) { selectedTab = 0 }
                     Spacer(modifier = Modifier.width(10.dp))
-                    TabButton("Local",       selectedTab == 1) { selectedTab = 1 }
+                    TabButton("Local", selectedTab == 1) { selectedTab = 1 }
                 }
-
                 Box(modifier = Modifier.weight(1f)) {
                     when (selectedTab) {
                         0 -> HuggingFaceTab(context, viewModel)
@@ -234,14 +236,12 @@ fun ModelForgeScreen(
             EngineState.MODEL_SELECTED -> {
                 Box(modifier = Modifier.weight(1f)) {
                     ScannerPanel(
-                        tensors   = tensors,
-                        layers    = layers,
-                        ramGB     = ramGB,
-                        statusMsg = statusMsg,
-                        ctxSize   = ctxSize,
-                        gpuLayers = gpuLayers,
-                        temp      = temp,
-                        viewModel = viewModel
+                        tensors       = tensors,
+                        layers        = layers,
+                        statusMsg     = statusMsg,
+                        ctxSize       = ctxSize,
+                        temp          = temp,
+                        viewModel     = viewModel
                     )
                 }
             }
@@ -249,13 +249,19 @@ fun ModelForgeScreen(
             else -> { Box(modifier = Modifier.weight(1f)) }
         }
 
-        // ── PANEL DE ESTADO INFERIOR ────────────────────────────────
-        StatusPanel(engineState, statusMsg, viewModel, onNavigateToChat)
+        // ── PANEL DE ESTADO INFERIOR ──────────────────────────────
+        StatusPanel(
+            engineState      = engineState,
+            statusMsg        = statusMsg,
+            viewModel        = viewModel,
+            onNavigateToChat = onNavigateToChat,
+            context          = context
+        )
     }
 }
 
 // =====================================================================
-// TAB — HUGGINGFACE CON FAMILIAS DE MODELOS EXPANDIBLES
+// TAB — HUGGINGFACE
 // =====================================================================
 
 @Composable
@@ -267,10 +273,12 @@ fun HuggingFaceTab(context: Context, viewModel: ModulaViewModel) {
         item {
             Text(
                 "Más modelos disponibles en huggingface.co/unsloth",
-                color = TextSecondary,
-                fontSize = 11.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                color       = TextSecondary,
+                fontSize    = 11.sp,
+                textAlign   = TextAlign.Center,
+                modifier    = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
             )
         }
     }
@@ -287,22 +295,21 @@ fun ModelFamilyCard(context: Context, family: ModelFamily, viewModel: ModulaView
             .background(SurfaceVariant)
             .border(1.dp, family.badgeColor.copy(alpha = 0.3f), RoundedCornerShape(14.dp))
     ) {
-        // ── Cabecera de la familia (siempre visible) ──
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { expanded = !expanded }
                 .padding(16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment     = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         family.familyName,
-                        color = TextPrimary,
+                        color      = TextPrimary,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp
+                        fontSize   = 17.sp
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Box(
@@ -311,21 +318,31 @@ fun ModelFamilyCard(context: Context, family: ModelFamily, viewModel: ModulaView
                             .background(family.badgeColor.copy(alpha = 0.15f))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
-                        Text(family.tagline, color = family.badgeColor, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            family.tagline,
+                            color      = family.badgeColor,
+                            fontSize   = 10.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 }
                 Spacer(modifier = Modifier.height(4.dp))
-                Text(family.description, color = TextSecondary, fontSize = 12.sp, lineHeight = 16.sp)
+                Text(
+                    family.description,
+                    color      = TextSecondary,
+                    fontSize   = 12.sp,
+                    lineHeight = 16.sp
+                )
             }
             Spacer(modifier = Modifier.width(8.dp))
             Icon(
-                if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                if (expanded) Icons.Default.KeyboardArrowUp
+                else          Icons.Default.KeyboardArrowDown,
                 contentDescription = null,
-                tint = family.badgeColor
+                tint               = family.badgeColor
             )
         }
 
-        // ── Lista de cuantizaciones (desplegable) ──
         AnimatedVisibility(visible = expanded) {
             Column(
                 modifier = Modifier
@@ -344,16 +361,24 @@ fun ModelFamilyCard(context: Context, family: ModelFamily, viewModel: ModulaView
 }
 
 @Composable
-fun QuantRow(context: Context, quant: QuantOption, accentColor: Color, viewModel: ModulaViewModel) {
-    val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-    val file = File(downloadDir, quant.fileName)
+fun QuantRow(
+    context: Context,
+    quant: QuantOption,
+    accentColor: Color,
+    viewModel: ModulaViewModel
+) {
+    val downloadDir = Environment
+        .getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+    val file        = File(downloadDir, quant.fileName)
+
     var isDownloaded  by remember { mutableStateOf(file.exists()) }
     var isDownloading by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context?, intent: Intent?) {
-                if (intent?.action == DownloadManager.ACTION_DOWNLOAD_COMPLETE && file.exists()) {
+                if (intent?.action == DownloadManager.ACTION_DOWNLOAD_COMPLETE
+                    && file.exists()) {
                     isDownloaded  = true
                     isDownloading = false
                 }
@@ -379,7 +404,12 @@ fun QuantRow(context: Context, quant: QuantOption, accentColor: Color, viewModel
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(quant.label, color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Text(
+                    quant.label,
+                    color      = TextPrimary,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize   = 14.sp
+                )
                 if (quant.isRecommended) {
                     Spacer(modifier = Modifier.width(6.dp))
                     Box(
@@ -388,27 +418,43 @@ fun QuantRow(context: Context, quant: QuantOption, accentColor: Color, viewModel
                             .background(accentColor.copy(alpha = 0.2f))
                             .padding(horizontal = 5.dp, vertical = 1.dp)
                     ) {
-                        Text("⭐ Rec.", color = accentColor, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            "⭐ Rec.",
+                            color      = accentColor,
+                            fontSize   = 9.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
                 Spacer(modifier = Modifier.weight(1f))
-                Text(quant.sizeLabel, color = accentColor, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Text(
+                    quant.sizeLabel,
+                    color      = accentColor,
+                    fontWeight = FontWeight.Bold,
+                    fontSize   = 13.sp
+                )
             }
             if (quant.note.isNotBlank()) {
                 Text(quant.note, color = TextSecondary, fontSize = 11.sp)
             }
-            Text(quant.ramReq, color = Color.Gray, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+            Text(
+                quant.ramReq,
+                color      = Color.Gray,
+                fontSize   = 10.sp,
+                fontFamily = FontFamily.Monospace
+            )
         }
 
         Spacer(modifier = Modifier.width(10.dp))
 
-        // Botón acción
         if (isDownloaded) {
             Button(
                 onClick = { viewModel.selectModelFromFile(context, file) },
-                colors = ButtonDefaults.buttonColors(containerColor = accentColor.copy(alpha = 0.15f)),
+                colors  = ButtonDefaults.buttonColors(
+                    containerColor = accentColor.copy(alpha = 0.15f)
+                ),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                shape = RoundedCornerShape(6.dp)
+                shape          = RoundedCornerShape(6.dp)
             ) {
                 Text("Usar", color = accentColor, fontWeight = FontWeight.Bold, fontSize = 13.sp)
             }
@@ -418,17 +464,20 @@ fun QuantRow(context: Context, quant: QuantOption, accentColor: Color, viewModel
                     isDownloading = true
                     downloadGguf(context, quant.downloadUrl, quant.fileName)
                 },
-                enabled = !isDownloading,
-                colors = ButtonDefaults.buttonColors(
+                enabled        = !isDownloading,
+                colors         = ButtonDefaults.buttonColors(
                     containerColor = if (isDownloading) SurfaceVariant else SurfaceDark
                 ),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                shape = RoundedCornerShape(6.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, if (isDownloading) Color.Gray else accentColor.copy(alpha = 0.5f))
+                shape          = RoundedCornerShape(6.dp),
+                border         = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    if (isDownloading) Color.Gray else accentColor.copy(alpha = 0.5f)
+                )
             ) {
                 Text(
                     if (isDownloading) "⏳" else "⬇",
-                    color = if (isDownloading) Color.Gray else accentColor,
+                    color    = if (isDownloading) Color.Gray else accentColor,
                     fontSize = 13.sp
                 )
             }
@@ -437,15 +486,17 @@ fun QuantRow(context: Context, quant: QuantOption, accentColor: Color, viewModel
 }
 
 // =====================================================================
-// TAB — LOCAL (carga directa sin copiar)
+// TAB — LOCAL
 // =====================================================================
 
 @Composable
 fun LocalTab(onBrowse: () -> Unit) {
     Column(
-        modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        modifier              = Modifier
+            .fillMaxWidth()
+            .padding(top = 16.dp),
+        horizontalAlignment   = Alignment.CenterHorizontally,
+        verticalArrangement   = Arrangement.spacedBy(16.dp)
     ) {
         Box(
             modifier = Modifier
@@ -455,111 +506,117 @@ fun LocalTab(onBrowse: () -> Unit) {
                 .padding(20.dp)
         ) {
             Column {
-                Text("📂 Carga Directa", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text(
+                    "📂 Carga Directa",
+                    color      = TextPrimary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize   = 16.sp
+                )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     "Selecciona un .gguf ya descargado en tu dispositivo.\n" +
-                    "No se realiza ninguna copia — se carga directamente desde su ubicación.",
-                    color = TextSecondary,
-                    fontSize = 13.sp,
+                    "No se realiza ninguna copia — carga directa desde su ubicación.",
+                    color      = TextSecondary,
+                    fontSize   = 13.sp,
                     lineHeight = 18.sp
                 )
             }
         }
 
         Button(
-            onClick = onBrowse,
-            colors = ButtonDefaults.buttonColors(containerColor = CyanNeon),
-            modifier = Modifier.fillMaxWidth().height(52.dp),
-            shape = RoundedCornerShape(12.dp)
+            onClick  = onBrowse,
+            colors   = ButtonDefaults.buttonColors(containerColor = CyanNeon),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+            shape    = RoundedCornerShape(12.dp)
         ) {
-            Text("Examinar Almacenamiento", color = ObsidianBlack, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            Text(
+                "Examinar Almacenamiento",
+                color      = ObsidianBlack,
+                fontWeight = FontWeight.Bold,
+                fontSize   = 15.sp
+            )
         }
 
         Text(
-            "Ruta típica en Android: /storage/emulated/0/Download/",
-            color = Color.Gray,
-            fontSize = 11.sp,
+            "Ruta típica: /storage/emulated/0/Download/",
+            color      = Color.Gray,
+            fontSize   = 11.sp,
             fontFamily = FontFamily.Monospace,
-            textAlign = TextAlign.Center
+            textAlign  = TextAlign.Center
         )
     }
 }
 
 // =====================================================================
-// PANEL DEL ESCÁNER Y SLIDERS
+// PANEL DEL ESCÁNER — Sin slider GPU
 // =====================================================================
 
 @Composable
 fun ScannerPanel(
     tensors: Long,
     layers: Int,
-    ramGB: Float,
     statusMsg: String,
     ctxSize: Float,
-    gpuLayers: Float,
     temp: Float,
     viewModel: ModulaViewModel
 ) {
     Column {
-        // Telemetría GGUF
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(
+            modifier              = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
             Text("Análisis GGUF:", color = TextPrimary, fontWeight = FontWeight.Bold)
             Text(
                 "$tensors tensores · $layers capas",
-                color = CyanNeon,
+                color      = CyanNeon,
                 fontFamily = FontFamily.Monospace,
-                fontSize = 13.sp
+                fontSize   = 13.sp
             )
         }
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Hardware badge
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(8.dp))
                 .background(SurfaceDark)
-                .border(1.dp, if (ramGB >= 11.5f) CyanDim else Color.DarkGray, RoundedCornerShape(8.dp))
+                .border(1.dp, CyanDim.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
                 .padding(12.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(if (ramGB >= 11.5f) "⚡" else "🧠", fontSize = 22.sp, modifier = Modifier.padding(end = 10.dp))
-                Text(statusMsg, color = if (ramGB >= 11.5f) CyanNeon else TextSecondary, fontSize = 12.sp, lineHeight = 16.sp)
+                Text("🧠", fontSize = 22.sp, modifier = Modifier.padding(end = 10.dp))
+                Text(
+                    "CPU pura · NEON · ARM64 · Optimizado para móvil",
+                    color    = TextSecondary,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp
+                )
             }
         }
+
         Spacer(modifier = Modifier.height(20.dp))
 
-        // Sliders
         LabeledSlider(
-            title    = "Ventana de Contexto",
-            subtitle = "Recomendado: 4096 para RAG",
-            value    = ctxSize,
-            range    = 1024f..16384f,
-            steps    = 14,
-            display  = "${ctxSize.toInt()} ctx",
+            title         = "Ventana de Contexto",
+            subtitle      = "Recomendado: 4096 para RAG",
+            value         = ctxSize,
+            range         = 1024f..16384f,
+            steps         = 14,
+            display       = "${ctxSize.toInt()} ctx",
             onValueChange = { viewModel.updateContextSize(it) }
         )
+
         Spacer(modifier = Modifier.height(12.dp))
 
         LabeledSlider(
-            title    = "Capas en GPU",
-            subtitle = if (gpuLayers == 0f) "CPU pura (seguro para gama media)" else "GPU activada",
-            value    = gpuLayers,
-            range    = 0f..layers.toFloat(),
-            steps    = if (layers > 1) layers - 1 else 0,
-            display  = "${gpuLayers.toInt()} / $layers",
-            onValueChange = { viewModel.updateGpuLayers(it) }
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-
-        LabeledSlider(
-            title    = "Temperatura",
-            subtitle = "Creatividad vs precisión (0.7 recomendado)",
-            value    = temp,
-            range    = 0.1f..1.5f,
-            steps    = 13,
-            display  = String.format(Locale.US, "%.2f", temp),
+            title         = "Temperatura",
+            subtitle      = "Creatividad vs precisión (0.7 recomendado)",
+            value         = temp,
+            range         = 0.1f..1.5f,
+            steps         = 13,
+            display       = String.format(Locale.US, "%.2f", temp),
             onValueChange = { viewModel.updateTemperature(it) }
         )
     }
@@ -576,18 +633,21 @@ fun LabeledSlider(
     onValueChange: (Float) -> Unit
 ) {
     Text(title, color = TextPrimary, fontWeight = FontWeight.SemiBold)
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+    Row(
+        modifier              = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
         Text(subtitle, color = TextSecondary, fontSize = 11.sp)
         Text(display, color = CyanNeon, fontWeight = FontWeight.Bold, fontSize = 13.sp)
     }
     Slider(
-        value = value,
+        value         = value,
         onValueChange = onValueChange,
-        valueRange = range,
-        steps = steps,
-        colors = SliderDefaults.colors(
-            thumbColor = CyanNeon,
-            activeTrackColor = CyanNeon,
+        valueRange    = range,
+        steps         = steps,
+        colors        = SliderDefaults.colors(
+            thumbColor         = CyanNeon,
+            activeTrackColor   = CyanNeon,
             inactiveTrackColor = SurfaceVariant
         )
     )
@@ -602,7 +662,8 @@ fun StatusPanel(
     engineState: EngineState,
     statusMsg: String,
     viewModel: ModulaViewModel,
-    onNavigateToChat: () -> Unit
+    onNavigateToChat: () -> Unit,
+    context: Context                   // ← parámetro añadido
 ) {
     Box(
         modifier = Modifier
@@ -619,55 +680,89 @@ fun StatusPanel(
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.fillMaxWidth()
+            modifier            = Modifier.fillMaxWidth()
         ) {
             when (engineState) {
+
                 EngineState.IDLE -> {
                     Text(
                         "Selecciona o descarga un modelo para comenzar.",
-                        color = TextSecondary,
-                        fontSize = 13.sp,
+                        color     = TextSecondary,
+                        fontSize  = 13.sp,
                         textAlign = TextAlign.Center
                     )
                 }
+
                 EngineState.ERROR -> {
-                    Text(statusMsg, color = ErrorRed, textAlign = TextAlign.Center, fontSize = 13.sp)
+                    Text(
+                        statusMsg,
+                        color     = ErrorRed,
+                        textAlign = TextAlign.Center,
+                        fontSize  = 13.sp
+                    )
                     Spacer(modifier = Modifier.height(8.dp))
-                    TextButton(onClick = { /* reset implícito al seleccionar otro */ }) {
+                    TextButton(onClick = { }) {
                         Text("Intentar con otro modelo", color = CyanNeon)
                     }
                 }
+
                 EngineState.LOADING -> {
-                    CircularProgressIndicator(color = CyanNeon, modifier = Modifier.size(32.dp))
+                    CircularProgressIndicator(
+                        color    = CyanNeon,
+                        modifier = Modifier.size(32.dp)
+                    )
                     Spacer(modifier = Modifier.height(12.dp))
-                    Text(statusMsg, color = CyanNeon, textAlign = TextAlign.Center, fontWeight = FontWeight.Medium)
-                }
-                EngineState.MODEL_SELECTED -> {
-                    Button(
-                        onClick = { viewModel.forgeEngine() },
-                        colors = ButtonDefaults.buttonColors(containerColor = CyanNeon),
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text("⚡ FORJAR NÚCLEO", color = ObsidianBlack, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    }
-                }
-                EngineState.READY -> {
-                    Text("✅ MODELO ACTIVO", color = CyanNeon, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Text(
                         statusMsg,
-                        color = TextSecondary,
+                        color      = CyanNeon,
+                        textAlign  = TextAlign.Center,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                EngineState.MODEL_SELECTED -> {
+                    Button(
+                        onClick  = { viewModel.forgeEngine(context) }, // ← context aquí
+                        colors   = ButtonDefaults.buttonColors(containerColor = CyanNeon),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp),
+                        shape    = RoundedCornerShape(10.dp)
+                    ) {
+                        Text(
+                            "⚡ FORJAR NÚCLEO",
+                            color      = ObsidianBlack,
+                            fontWeight = FontWeight.Bold,
+                            fontSize   = 16.sp
+                        )
+                    }
+                }
+
+                EngineState.READY -> {
+                    Text(
+                        "✅ MODELO ACTIVO",
+                        color      = CyanNeon,
+                        fontWeight = FontWeight.Bold,
+                        fontSize   = 14.sp
+                    )
+                    Text(
+                        statusMsg,
+                        color     = TextSecondary,
                         textAlign = TextAlign.Center,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(vertical = 6.dp)
+                        fontSize  = 12.sp,
+                        modifier  = Modifier.padding(vertical = 6.dp)
                     )
                     Button(
-                        onClick = onNavigateToChat,
-                        colors = ButtonDefaults.buttonColors(containerColor = CyanDim),
+                        onClick  = onNavigateToChat,
+                        colors   = ButtonDefaults.buttonColors(containerColor = CyanDim),
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp)
+                        shape    = RoundedCornerShape(10.dp)
                     ) {
-                        Text("Iniciar Chat →", color = CyanNeon, fontWeight = FontWeight.Bold)
+                        Text(
+                            "Iniciar Chat →",
+                            color      = CyanNeon,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }
@@ -685,15 +780,19 @@ fun TabButton(text: String, isSelected: Boolean, onClick: () -> Unit) {
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
             .background(if (isSelected) SurfaceVariant else Color.Transparent)
-            .border(1.dp, if (isSelected) CyanDim else Color.Transparent, RoundedCornerShape(8.dp))
+            .border(
+                1.dp,
+                if (isSelected) CyanDim else Color.Transparent,
+                RoundedCornerShape(8.dp)
+            )
             .clickable { onClick() }
             .padding(horizontal = 18.dp, vertical = 9.dp)
     ) {
         Text(
             text,
-            color = if (isSelected) CyanNeon else TextSecondary,
+            color      = if (isSelected) CyanNeon else TextSecondary,
             fontWeight = FontWeight.Bold,
-            fontSize = 14.sp
+            fontSize   = 14.sp
         )
     }
 }
@@ -702,7 +801,9 @@ fun downloadGguf(context: Context, url: String, fileName: String) {
     val request = DownloadManager.Request(Uri.parse(url))
         .setTitle(fileName)
         .setDescription("Descargando modelo para Modula")
-        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+        .setNotificationVisibility(
+            DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
+        )
         .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
         .setAllowedOverMetered(true)
         .setAllowedOverRoaming(true)
