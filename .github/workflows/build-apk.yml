@@ -1,0 +1,69 @@
+name: Build APK (Modula)
+
+# Builds the v2 test app in android/ with Gradle.
+# The engine is built first from factory/ (Linux, official NDK r29),
+# because the prebuilt .so files are NOT committed to the repo — the
+# GitHub connector cannot push binary files, and building from source
+# keeps the repo reproducible. First run will show whether the
+# workflow works as written (the same scripts were verified on a
+# Linux VM on 2026-11-06 with llama.cpp commit bcb01528).
+# No gradlew wrapper jar is committed either, so Gradle is installed
+# with setup-gradle instead of ./gradlew.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "android/**"
+      - "factory/**"
+      - ".github/workflows/build-apk.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: "8.4"
+
+      - name: Install engine build tools
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build git wget unzip
+
+      - name: Build engine (Linux factory)
+        run: |
+          bash factory/linux/setup_linux.sh
+          bash factory/linux/prepare_modula.sh
+          bash factory/linux/build_cpu.sh
+        env:
+          BASE_DIR: ${{ github.workspace }}
+
+      - name: Copy engine into the app
+        run: |
+          mkdir -p android/app/src/main/jniLibs/arm64-v8a
+          cp MOTORES_LISTOS/jniLibs/arm64-v8a/libmodula_engine-stripped.so android/app/src/main/jniLibs/arm64-v8a/libmodula_engine.so
+          cp MOTORES_LISTOS/jniLibs/arm64-v8a/libomp.so android/app/src/main/jniLibs/arm64-v8a/libomp.so
+          ls -l android/app/src/main/jniLibs/arm64-v8a/
+
+      - name: Build debug APK
+        # The Gradle project lives in android/ in the v2 layout.
+        working-directory: android
+        run: gradle assembleDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: modula-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
