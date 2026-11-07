@@ -32,7 +32,15 @@ jobs:
           distribution: temurin
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        # The ubuntu-latest runner already has the Android SDK preinstalled
+        # (ANDROID_HOME is set). android-actions/setup-android@v3 fails here
+        # because it tries to install the legacy "tools" package, which no
+        # longer exists in current command-line tools (run #1 failed in 22 s
+        # on this step, 2026-11-07). Install only the packages the build needs.
+        run: |
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
