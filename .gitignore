@@ -1,0 +1,27 @@
+# Binaries and build outputs — never commit these
+*.gguf
+*.apk
+*.aab
+*.so
+# EXCEPTION: the two prebuilt libraries the app needs must be committed,
+# otherwise the APK build has no engine to package.
+!android/app/src/main/jniLibs/arm64-v8a/*.so
+*.a
+*.dex
+*.idsig
+build/
+.gradle/
+local.properties
+*.keystore
+*.jks
+# NDK / SDK / llama.cpp source tree (downloaded at build time)
+android-ndk-*/
+llama.cpp/
+# Model files and caches
+*.bin
+model.gguf
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+*.iml
