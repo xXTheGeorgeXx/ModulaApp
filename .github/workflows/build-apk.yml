@@ -43,9 +43,11 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0"
 
       - name: Set up Gradle
+        # AGP 8.5.2 requires Gradle >= 8.7 (run #3 failed on 8.4 with
+        # "Minimum supported Gradle version is 8.7").
         uses: gradle/actions/setup-gradle@v3
         with:
-          gradle-version: "8.4"
+          gradle-version: "8.7"
 
       - name: Install engine build tools
         run: sudo apt-get update && sudo apt-get install -y cmake ninja-build git wget unzip
